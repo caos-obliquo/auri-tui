@@ -1,0 +1,3 @@
+# Parity fixtures are LF JSON read by tests; force LF so the bytes match on
+# every platform.
+*.json text eol=lf

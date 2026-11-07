@@ -1,0 +1,4 @@
+# Generic USB permission (libusb / hidapi backends)
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="3302", ATTRS{idProduct}=="8902", MODE="0666", TAG+="uaccess"
+# HID raw node — where the write actually lands
+KERNEL=="hidraw*", ATTRS{idVendor}=="3302", ATTRS{idProduct}=="8902", MODE="0666", TAG+="uaccess"

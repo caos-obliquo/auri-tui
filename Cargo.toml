@@ -1,0 +1,23 @@
+[workspace]
+members = [
+    "crates/auri-codec",
+    "crates/auri-transport",
+    "crates/auri-cli",
+]
+resolver = "2"
+
+[workspace.lints.clippy]
+todo = "warn"
+unwrap_used = "warn"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+repository = "https://github.com/caos-obliquo/auri-tui"
+authors = ["beto bettini <caos_obliquo@proton.me>"]
+
+[workspace.dependencies]
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

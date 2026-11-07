@@ -1,0 +1,23 @@
+[package]
+name = "auri-transport"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "HID transport for the Kuba Auri (CB5100) DSP cable: real device, fake device, dry-run"
+keywords = ["hid", "usb", "dsp"]
+categories = ["hardware-support"]
+
+[dependencies]
+auri-codec = { path = "../auri-codec" }
+hidapi = "2.6"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

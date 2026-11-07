@@ -1,0 +1,15 @@
+/target
+/target/*
+.vscode/
+.ignore
+*.log
+rustc-ice*
+session-*.md
+.omo/
+.opencode/plans
+.codegraph/
+.pi/
+
+# Parity oracles live in the open-auri checkout (AGPL-3.0). They are read at
+# test time and never vendored into this MIT repository.
+crates/*/tests/fixtures/
