@@ -22,8 +22,8 @@ Independent implementation. **Not a fork** of
 
 These are not negotiable; every milestone keeps them:
 
-1. **Nothing reaches the cable without the safety gate.** `--commit` is
-   refused outright until the CLI runs `gate_for_write` (M3). Dry-run is the
+1. **Nothing reaches the cable without the safety gate.** `--commit` runs
+   `gate_for_write` first and refuses a curve the gate refuses. Dry-run is the
    default.
 2. **A write is never retried.** The firmware validates the CRC and rejects a
    bad payload silently; resending only races the device.
@@ -75,13 +75,29 @@ Then replug the cable. Verify with `ls -l /dev/hidraw*` and
 # What can we see?
 auri devices
 
-# Dry-run: print the nine frames, write nothing (the default)
+# Dry-run: gate verdict + the nine frames, write nothing (the default)
 auri neutral
 auri write curve.json
+auri show curve.json
 
-# Only once the safety gate exists:
+# Write to the cable — only a curve the gate approves
 auri write curve.json --commit
+auri neutral --commit
+
+# Judge under the yolo profile: class-2 reasons are waived, hard ones never are
+auri write curve.json --yolo --commit
 ```
+
+The verdict is printed before the bytes, always:
+
+```
+gate: PASS (standard profile), CRC 0x4fff
+gate: REFUSED (standard profile)
+  g:preamp = -0.2 (limit -0.5)
+  d:prefix-peak at band 0 = -0.19999996779759982 (limit -0.20368875272918074)
+```
+
+A refused curve exits non-zero and writes nothing, `--commit` or not.
 
 A `curve.json` is the same shape the web app serialises:
 
@@ -112,8 +128,10 @@ Current status:
   (13 writes, 130 frames) is reproduced exactly; dry-run invariants hold.
 - **M2** — the safety gate matches the JavaScript oracle on 336 generated
   verdicts covering all 19 reason codes, in both profiles, on both grids, with
-  19,544 numeric comparisons (worst relative delta 3.2e-15). The CLI does not
-  call it yet.
+  19,544 numeric comparisons (worst relative delta 3.2e-15).
+- **M3** — `--commit` is gated: the CLI prints the verdict, refuses a refused
+  curve with a non-zero exit, and only then opens the cable. `neutral` writes
+  the −0.5 dB preamp the official Neutro preset uses (CRC `0x4fff`).
 
 ## Licensing
 

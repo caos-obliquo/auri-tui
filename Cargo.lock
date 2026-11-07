@@ -57,6 +57,7 @@ name = "auri-cli"
 version = "0.1.0"
 dependencies = [
  "auri-codec",
+ "auri-gate",
  "auri-transport",
  "clap",
  "serde",

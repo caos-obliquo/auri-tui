@@ -25,11 +25,14 @@ struct WireCurve {
 }
 
 impl CurveFile {
-    /// The neutral curve: ten pass-through sections, no preamp.
+    /// The neutral curve: ten pass-through sections at the −0.5 dB preamp the
+    /// official "Neutro" preset writes (the wire capture's
+    /// `encodeReports(NEUTRAL_BANDS, -0.5)`), which is also the highest preamp
+    /// the gate accepts.
     #[must_use]
     pub fn neutral() -> Self {
         CurveFile {
-            preamp_db: 0.0,
+            preamp_db: -0.5,
             eq_bands: auri_codec::NEUTRAL_BANDS.to_vec(),
         }
     }
