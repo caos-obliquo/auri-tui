@@ -17,9 +17,9 @@
 //! - Low and high pass follow Robert Bristow-Johnson's Audio EQ Cookbook
 //!   directly (AutoEq has no such filters).
 
-use crate::band::{Band, BAND_COUNT};
-use crate::error::CodecError;
 use crate::SAMPLE_RATE;
+use crate::band::{BAND_COUNT, Band};
+use crate::error::CodecError;
 
 /// One normalized biquad section.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -111,7 +111,12 @@ pub fn design_high_shelf(freq_hz: f64, gain_db: f64, q_factor: f64) -> Section {
 
 /// High shelf at an explicit sample rate.
 #[must_use]
-pub fn design_high_shelf_at(freq_hz: f64, gain_db: f64, q_factor: f64, sample_rate: f64) -> Section {
+pub fn design_high_shelf_at(
+    freq_hz: f64,
+    gain_db: f64,
+    q_factor: f64,
+    sample_rate: f64,
+) -> Section {
     let amp = 10.0_f64.powf(gain_db / 40.0);
     let w0 = (2.0 * std::f64::consts::PI * freq_hz) / sample_rate;
     let alpha = w0.sin() / (2.0 * q_factor);
@@ -200,14 +205,8 @@ pub fn design_section(band: Band) -> Result<Section, CodecError> {
             gain_db,
             q_factor,
         } => design_high_shelf(freq_hz, gain_db, q_factor),
-        Band::Lp {
-            freq_hz,
-            q_factor,
-        } => design_low_pass(freq_hz, q_factor),
-        Band::Hp {
-            freq_hz,
-            q_factor,
-        } => design_high_pass(freq_hz, q_factor),
+        Band::Lp { freq_hz, q_factor } => design_low_pass(freq_hz, q_factor),
+        Band::Hp { freq_hz, q_factor } => design_high_pass(freq_hz, q_factor),
         Band::Off => Section::identity(),
     })
 }

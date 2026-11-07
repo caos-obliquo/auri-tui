@@ -5,7 +5,7 @@ use crate::crc::crc16_ccitt;
 use crate::design::{check_bands, design_section};
 use crate::error::CodecError;
 use crate::quantize::encode_section;
-use crate::{COMMIT_COMMAND, PREAMBLE, PAYLOAD_SIZE};
+use crate::{COMMIT_COMMAND, PAYLOAD_SIZE, PREAMBLE};
 
 /// Size of one HID report, report ID excluded.
 pub const REPORT_SIZE: usize = 31;
@@ -95,7 +95,10 @@ pub fn reports_from_payload(payload: &[u8]) -> Result<Vec<[u8; REPORT_SIZE]>, Co
 /// # Errors
 ///
 /// Whatever [`encode_payload`] and [`reports_from_payload`] can report.
-pub fn encode_reports(bands: &[Band], preamp_db: f64) -> Result<Vec<[u8; REPORT_SIZE]>, CodecError> {
+pub fn encode_reports(
+    bands: &[Band],
+    preamp_db: f64,
+) -> Result<Vec<[u8; REPORT_SIZE]>, CodecError> {
     reports_from_payload(&encode_payload(bands, preamp_db)?)
 }
 
@@ -131,7 +134,10 @@ mod tests {
     #[test]
     fn neutral_preamp_word_is_one_in_q23() {
         let payload = encode_payload(&NEUTRAL_BANDS, 0.0).unwrap();
-        assert_eq!(i32::from_le_bytes(payload[14..18].try_into().unwrap()), 1 << 23);
+        assert_eq!(
+            i32::from_le_bytes(payload[14..18].try_into().unwrap()),
+            1 << 23
+        );
     }
 
     #[test]

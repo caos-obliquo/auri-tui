@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/auri-codec",
+    "crates/auri-gate",
     "crates/auri-transport",
     "crates/auri-cli",
 ]

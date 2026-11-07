@@ -1,6 +1,6 @@
 //! The write sequence: reports first, commit last, never a retry.
 
-use auri_codec::{commit_report, HID_REPORT_ID, REPORT_COUNT, REPORT_SIZE};
+use auri_codec::{HID_REPORT_ID, REPORT_COUNT, REPORT_SIZE, commit_report};
 
 use crate::HidSink;
 

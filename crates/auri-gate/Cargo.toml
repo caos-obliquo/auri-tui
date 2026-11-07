@@ -1,0 +1,21 @@
+[package]
+name = "auri-gate"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Gate v2 safety verdict for Kuba Auri 0xCB curves: the observed envelope of the 11 official presets"
+keywords = ["dsp", "eq", "safety", "audio", "hid"]
+categories = ["audio", "hardware-support"]
+
+[dependencies]
+auri-codec = { path = "../auri-codec" }
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use auri_codec::{encode_reports, Band, HID_REPORT_ID, REPORT_COUNT, REPORT_SIZE};
+use auri_codec::{Band, HID_REPORT_ID, REPORT_COUNT, REPORT_SIZE, encode_reports};
 use auri_transport::{CurveWriter, RecordingHid};
 
 fn fixtures_dir() -> Option<PathBuf> {
@@ -19,7 +19,10 @@ fn fixtures_dir() -> Option<PathBuf> {
         .join("../../../open-auri/test/fixtures")
         .canonicalize()
         .ok()?;
-    sibling.join("usb-wire-golden.json").exists().then_some(sibling)
+    sibling
+        .join("usb-wire-golden.json")
+        .exists()
+        .then_some(sibling)
 }
 
 fn parse_hex(text: &str) -> Vec<u8> {
@@ -94,10 +97,9 @@ fn replays_the_real_hardware_capture() {
     let golden: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(dir.join("usb-wire-golden.json")).unwrap())
             .unwrap();
-    let reference: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(dir.join("eq0xcb.reference.json")).unwrap(),
-    )
-    .unwrap();
+    let reference: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("eq0xcb.reference.json")).unwrap())
+            .unwrap();
 
     let writes = golden["writes"].as_array().unwrap();
     assert_eq!(writes.len(), 13, "the capture holds 13 writes");

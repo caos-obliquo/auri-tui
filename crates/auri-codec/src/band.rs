@@ -67,7 +67,11 @@ impl BandKind {
 /// `freq_hz` is in Hz at [`crate::SAMPLE_RATE`], `gain_db` in dB, `q_factor`
 /// unitless. `LP`/`HP` carry no gain.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind", rename_all = "UPPERCASE", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "kind",
+    rename_all = "UPPERCASE",
+    rename_all_fields = "camelCase"
+)]
 pub enum Band {
     /// Peaking EQ.
     Pk {

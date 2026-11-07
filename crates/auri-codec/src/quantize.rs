@@ -39,13 +39,7 @@ pub fn is_stable(a1: f64, a2: f64) -> bool {
 /// [`CodecError::CoefficientOutOfRange`] when a word does not fit `i32`, and
 /// [`CodecError::Unstable`] when the quantized poles leave the unit circle.
 pub fn encode_section(section: Section, index: usize) -> Result<[i32; 5], CodecError> {
-    let ordered = [
-        section.b0,
-        section.b2,
-        -section.a1,
-        section.b1,
-        -section.a2,
-    ];
+    let ordered = [section.b0, section.b2, -section.a1, section.b1, -section.a2];
     let mut words = [0_i32; 5];
     for (slot, &coefficient) in ordered.iter().enumerate() {
         // `+ 0.0` turns -0.0 (from negating a zero a1/a2) into +0.0.
@@ -60,7 +54,10 @@ pub fn encode_section(section: Section, index: usize) -> Result<[i32; 5], CodecE
         words[slot] = word as i32;
     }
     // words[2] is -a1, words[4] is -a2: negate them back for the criterion.
-    if !is_stable(f64::from(-words[2]) / Q27_ONE, f64::from(-words[4]) / Q27_ONE) {
+    if !is_stable(
+        f64::from(-words[2]) / Q27_ONE,
+        f64::from(-words[4]) / Q27_ONE,
+    ) {
         return Err(CodecError::Unstable { index });
     }
     Ok(words)

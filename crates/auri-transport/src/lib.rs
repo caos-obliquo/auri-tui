@@ -21,7 +21,7 @@ mod writer;
 
 pub use fake::RecordingHid;
 pub use real::RealHid;
-pub use writer::{CurveWriter, TransportError, REPORT_GAP_MS, SETTLE_MS, WRITE_SPACING_MS};
+pub use writer::{CurveWriter, REPORT_GAP_MS, SETTLE_MS, TransportError, WRITE_SPACING_MS};
 
 /// Anything that can consume one report-sized write.
 ///

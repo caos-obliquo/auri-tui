@@ -7,8 +7,9 @@
 use std::path::PathBuf;
 
 use auri_codec::{
-    commit_report, encode_payload, encode_reports, reports_from_payload, Band, COMMIT_COMMAND,
-    HID_REPORT_ID, PAYLOAD_SIZE, PREAMBLE, REPORT_COUNT, REPORT_SIZE, SAMPLE_RATE, USB_PID, USB_VID,
+    Band, COMMIT_COMMAND, HID_REPORT_ID, PAYLOAD_SIZE, PREAMBLE, REPORT_COUNT, REPORT_SIZE,
+    SAMPLE_RATE, USB_PID, USB_VID, commit_report, encode_payload, encode_reports,
+    reports_from_payload,
 };
 
 /// Where the AGPL oracles live, if they are anywhere.
@@ -23,7 +24,10 @@ fn fixtures_dir() -> Option<PathBuf> {
         .join("../../../open-auri/test/fixtures")
         .canonicalize()
         .ok()?;
-    sibling.join("eq0xcb.reference.json").exists().then_some(sibling)
+    sibling
+        .join("eq0xcb.reference.json")
+        .exists()
+        .then_some(sibling)
 }
 
 fn load_reference() -> Option<serde_json::Value> {
@@ -49,7 +53,10 @@ fn constants_match_the_reference() {
         constants["hidReportId"].as_u64().unwrap(),
         u64::from(HID_REPORT_ID)
     );
-    assert_eq!(constants["sampleRate"].as_u64().unwrap(), u64::from(SAMPLE_RATE));
+    assert_eq!(
+        constants["sampleRate"].as_u64().unwrap(),
+        u64::from(SAMPLE_RATE)
+    );
     let preamble: Vec<u8> = constants["preamble"]
         .as_array()
         .unwrap()

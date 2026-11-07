@@ -25,18 +25,18 @@ mod error;
 mod magnitude;
 mod quantize;
 
-pub use band::{Band, BandKind, BAND_COUNT, FILTER_KINDS, NEUTRAL_BANDS, OFF};
+pub use band::{BAND_COUNT, Band, BandKind, FILTER_KINDS, NEUTRAL_BANDS, OFF};
 pub use crc::crc16_ccitt;
 pub use design::{
-    check_band, check_bands, design_high_pass, design_high_shelf, design_low_pass,
-    design_low_shelf, design_peaking, design_section, Section,
+    Section, check_band, check_bands, design_high_pass, design_high_shelf, design_low_pass,
+    design_low_shelf, design_peaking, design_section,
 };
 pub use encode::{
-    commit_report, encode_payload, encode_reports, reports_from_payload, REPORT_COUNT, REPORT_SIZE,
+    REPORT_COUNT, REPORT_SIZE, commit_report, encode_payload, encode_reports, reports_from_payload,
 };
 pub use error::CodecError;
 pub use magnitude::magnitude_db;
-pub use quantize::{encode_section, is_stable, preamp_word, Q23_ONE, Q27_ONE};
+pub use quantize::{Q23_ONE, Q27_ONE, encode_section, is_stable, preamp_word};
 
 /// USB vendor ID of the cable (`0x3302`).
 pub const USB_VID: u16 = 0x3302;

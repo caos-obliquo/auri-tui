@@ -8,10 +8,10 @@
 //! coefficients, measured on ~27 000 cases, is 6e-14 dB (versus 4e-9 dB for
 //! the direct form and 1.5e-7 dB for AutoEq's phi form).
 
+use crate::SAMPLE_RATE;
 use crate::band::Band;
 use crate::design::design_section;
 use crate::error::CodecError;
-use crate::SAMPLE_RATE;
 
 /// Power of one polynomial at `z^-1 = e^-jw`.
 fn power_at(p0: f64, p1: f64, p2: f64, u_re: f64, u_im: f64, u_sq_re: f64, u_sq_im: f64) -> f64 {
@@ -48,7 +48,9 @@ pub fn magnitude_db_at(bands: &[Band], freq_hz: f64, sample_rate: f64) -> Result
     let mut total_db = 0.0;
     for band in bands {
         let section = design_section(*band)?;
-        let numerator = power_at(section.b0, section.b1, section.b2, u_re, u_im, u_sq_re, u_sq_im);
+        let numerator = power_at(
+            section.b0, section.b1, section.b2, u_re, u_im, u_sq_re, u_sq_im,
+        );
         let denominator = power_at(1.0, section.a1, section.a2, u_re, u_im, u_sq_re, u_sq_im);
         total_db += 10.0 * (numerator / denominator).log10();
     }

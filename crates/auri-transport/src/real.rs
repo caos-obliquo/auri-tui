@@ -2,8 +2,8 @@
 
 use auri_codec::{USB_PID, USB_VID};
 
-use crate::writer::TransportError;
 use crate::HidSink;
+use crate::writer::TransportError;
 
 /// A handle on the physical cable.
 pub struct RealHid {
@@ -63,7 +63,11 @@ impl RealHid {
         let api = hidapi::HidApi::new().map_err(|error| TransportError::Open {
             message: error.to_string(),
         })?;
-        Ok(api.device_list().filter(|info| matches(info)).map(describe).collect())
+        Ok(api
+            .device_list()
+            .filter(|info| matches(info))
+            .map(describe)
+            .collect())
     }
 }
 

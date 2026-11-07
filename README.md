@@ -14,6 +14,7 @@ Independent implementation. **Not a fork** of
 | Crate | Description |
 |---|---|
 | `auri-codec` | Byte-exact `0xCB` wire codec: RBJ/AutoEq biquads → Q23/Q27 words → CRC-16 → 9 reports |
+| `auri-gate` | Safety gate v2: the observed envelope of the 11 official presets, verdict before any write |
 | `auri-transport` | HID transport: real cable (`hidapi`), recording fake, dry-run writer |
 | `auri-cli` | The `auri` binary: `devices`, `show`, `write`, `neutral` |
 
@@ -22,7 +23,8 @@ Independent implementation. **Not a fork** of
 These are not negotiable; every milestone keeps them:
 
 1. **Nothing reaches the cable without the safety gate.** `--commit` is
-   refused outright until the gate is ported (M2). Dry-run is the default.
+   refused outright until the CLI runs `gate_for_write` (M3). Dry-run is the
+   default.
 2. **A write is never retried.** The firmware validates the CRC and rejects a
    bad payload silently; resending only races the device.
 3. **An abort never sends the commit.** Flash keeps the previous preset.
@@ -93,19 +95,25 @@ boosts.
 ## Tests
 
 ```sh
-cargo test --workspace          # unit + transport
+cargo test --workspace          # unit + transport + gate
+just corpus                     # regenerate the gate verdicts from the oracle
 just parity                     # byte-exact parity vs the open-auri oracles
 ```
 
-The parity oracles (`eq0xcb.reference.json`, `usb-wire-golden.json`) are
-AGPL-3.0 artefacts of open-auri and are **not vendored here**. Tests read them
-from a sibling `open-auri` checkout, or from `AURI_FIXTURES_DIR`, and skip when
-they are absent. Current status:
+The parity oracles (`eq0xcb.reference.json`, `usb-wire-golden.json`,
+`gate-verdicts.json`) are AGPL-3.0 artefacts of open-auri and are **not
+vendored here**. Tests read them from a sibling `open-auri` checkout, or from
+`AURI_FIXTURES_DIR` / `AURI_GATE_VERDICTS`, and skip when they are absent.
+Current status:
 
 - **M0** — all 11 official presets encode byte-for-byte identically to the
   reference implementation.
 - **M1** — every frame of the real 2026-10-28 Windows/Edge hardware capture
   (13 writes, 130 frames) is reproduced exactly; dry-run invariants hold.
+- **M2** — the safety gate matches the JavaScript oracle on 336 generated
+  verdicts covering all 19 reason codes, in both profiles, on both grids, with
+  19,544 numeric comparisons (worst relative delta 3.2e-15). The CLI does not
+  call it yet.
 
 ## Licensing
 

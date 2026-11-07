@@ -74,6 +74,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "auri-gate"
+version = "0.1.0"
+dependencies = [
+ "auri-codec",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "auri-transport"
 version = "0.1.0"
 dependencies = [

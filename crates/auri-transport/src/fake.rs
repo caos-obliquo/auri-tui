@@ -1,7 +1,7 @@
 //! A sink that only records: the dry-run default and every transport test.
 
-use crate::writer::TransportError;
 use crate::HidSink;
+use crate::writer::TransportError;
 
 /// Records every write instead of performing it.
 #[derive(Debug, Default)]
