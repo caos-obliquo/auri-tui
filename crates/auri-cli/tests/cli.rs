@@ -54,3 +54,36 @@ fn show_preset_unknown_id_is_named() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("does-not-exist"), "stderr: {stderr}");
 }
+
+#[test]
+fn export_prints_apo_text_for_a_preset() {
+    let output = Command::new(auri_bin())
+        .args(["export", "--preset", "padrao", "--format", "apo"])
+        .output()
+        .expect("run auri export");
+    assert!(output.status.success(), "export: {output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Preamp: -2.8 dB"), "stdout: {stdout}");
+    assert_eq!(stdout.matches("Filter ").count(), 10, "stdout: {stdout}");
+    assert!(stdout.contains("Filter 1: ON PK"), "stdout: {stdout}");
+}
+
+#[test]
+fn export_pipewire_is_key_value_and_unknown_ids_fail() {
+    let output = Command::new(auri_bin())
+        .args(["export", "--preset", "neutro", "--format", "pipewire"])
+        .output()
+        .expect("run auri export");
+    assert!(output.status.success(), "export: {output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("preamp = -0.5"), "stdout: {stdout}");
+    assert!(stdout.contains("band.1.type = off"), "stdout: {stdout}");
+
+    let bad = Command::new(auri_bin())
+        .args(["export", "--preset", "nope", "--format", "apo"])
+        .output()
+        .expect("run auri export");
+    assert!(!bad.status.success());
+    let stderr = String::from_utf8_lossy(&bad.stderr);
+    assert!(stderr.contains("nope"), "stderr: {stderr}");
+}

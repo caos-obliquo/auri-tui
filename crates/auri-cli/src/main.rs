@@ -5,6 +5,7 @@
 //! gate approves, because nothing reaches the cable without a gate.
 
 mod curve;
+mod export;
 mod presets;
 mod tui;
 
@@ -22,6 +23,7 @@ use auri_transport::{CurveWriter, HidSink, RealHid};
 use clap::{Parser, Subcommand};
 
 use crate::curve::CurveFile;
+use crate::export::ExportFormat;
 
 /// Offline terminal control for the Kuba Auri (CB5100) DSP cable.
 #[derive(Debug, Parser)]
@@ -52,6 +54,18 @@ enum Command {
     },
     /// List the built-in Kuba Auri presets.
     Presets,
+    /// Print a curve in another tool's format (never writes to the cable).
+    Export {
+        /// Path to a JSON curve file.
+        #[arg(required_unless_present = "preset", conflicts_with = "preset")]
+        file: Option<std::path::PathBuf>,
+        /// Built-in preset id instead of a file (see `auri presets`).
+        #[arg(long, value_name = "ID")]
+        preset: Option<String>,
+        /// Target format.
+        #[arg(long, value_enum, default_value_t = ExportFormat::Apo)]
+        format: ExportFormat,
+    },
     /// Encode a curve and (dry-run) print the frames.
     Write {
         /// Path to a JSON curve file.
@@ -179,6 +193,18 @@ fn run() -> Result<(), String> {
             let verdict = judge(&curve, false);
             print_verdict(&verdict, false);
             print_report(curve.encode().map_err(|e| e.to_string())?);
+            Ok(())
+        }
+        Command::Export {
+            file,
+            preset,
+            format,
+        } => {
+            let curve = curve_arg(file, preset)?;
+            out(format_args!(
+                "{}",
+                export::render(&curve, format).trim_end()
+            ));
             Ok(())
         }
         Command::Write {
