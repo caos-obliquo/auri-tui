@@ -283,6 +283,13 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
     let now = now_ms();
     let flash_path = flash_path();
     let mut flash = load_flash(&flash_path, now);
+    // Persist the anchor before the spacing check: a refused write must still
+    // start the wait, or every fresh invocation re-anchors `last_write_at` to
+    // its own start time and the first-ever commit can never succeed. Only the
+    // anchor is written here — no counter moves and nothing is re-sent.
+    if let Err(error) = save_flash(&flash_path, &flash) {
+        err(format_args!("auri: flash counters not saved ({error})"));
+    }
     let spacing = can_write_now(&flash, now);
     if !spacing.ok {
         return Err(format!(

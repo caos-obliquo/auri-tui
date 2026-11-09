@@ -353,17 +353,41 @@ mod tests {
         );
     }
 
+    /// A sink that always fails, standing in for an unplugged cable. The
+    /// transport path is exercised without depending on whether a device is
+    /// actually attached to the test machine.
+    struct FailingHid;
+
+    impl HidSink for FailingHid {
+        fn label(&self) -> &str {
+            "no cable"
+        }
+
+        fn write(&mut self, _bytes: &[u8]) -> Result<(), auri_transport::TransportError> {
+            Err(auri_transport::TransportError::NoDevice)
+        }
+    }
+
     #[test]
     fn a_missing_cable_is_a_status_not_a_crash() {
         let mut app = ready();
-        app.handle_key(Key::Char('w'));
-        app.handle_key(Key::Char('w'));
-        send(&mut app, true);
+        let mut writer = CurveWriter::new(FailingHid);
+        committed_write(&mut app, &mut writer);
         assert!(!app.status.is_empty(), "the user must learn what happened");
         assert!(
             !app.status.contains("written to"),
             "no cable means no write: {}",
             app.status
+        );
+        assert!(
+            app.status.contains("no Kuba Auri cable found"),
+            "the transport error must reach the status: {}",
+            app.status
+        );
+        assert_eq!(
+            app.last_journal_status,
+            Some(JournalStatus::Interrupted),
+            "a failed write is interrupted, never ok"
         );
     }
 
