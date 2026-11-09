@@ -46,18 +46,20 @@ crates/auri-transport  HID transport
   tests/transport.rs   replays the real 2026-10-28 hardware capture (130 frames)
 
 crates/auri-cli        the `auri` binary
-  src/main.rs          devices | show | write | neutral | tui
+  src/main.rs          devices | presets | show | write | neutral | tui
   src/curve.rs         curve.json loader
+  src/presets.rs       the 11 official curves + Neutro (generated)
   src/tui/{app,ui,plot,mod}.rs   ratatui editor (vim h/j/k/l)
 
 tools/gen-gate-verdicts.mjs   regenerates the gate parity corpus from the JS oracle
 tools/gen-levels.mjs          regenerates the level_db parity corpus (M5.2)
+tools/gen-presets.mjs         regenerates src/presets.rs from the reference catalog
 ```
 
 ### Running things
 
 ```sh
-cargo test --workspace                 # 124 tests
+cargo test --workspace                 # 130 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all                        # stable: warns about nightly-only options
 node tools/gen-gate-verdicts.mjs       # needs a sibling open-auri checkout
@@ -353,6 +355,29 @@ checklist allows, else the lock message).
   transport write.
 
 All of the above land with M5: 124 tests green, clippy `-D warnings` clean.
+
+---
+
+## 5b. Done — the official presets
+
+The 11 curves Kuba ships (plus Neutro) are built in, minimal by design:
+
+- `crates/auri-cli/src/presets.rs` is **generated** by `tools/gen-presets.mjs`
+  from the reference catalog. Only ids, labels, preamp, CRC and the band
+  numbers are copied — the reference's pt-BR prose is AGPL and stays out.
+- `auri presets` lists them (`id`, `label`, preamp, official CRC).
+- `auri write --preset <id>` and `auri tui --preset <id>` load one; the file
+  argument and `--preset` conflict. `tui --preset` starts the editor on that
+  curve (still dry-run unless `--commit`).
+- Tests pin every curve: it must encode to its **official CRC** and pass the
+  standard gate, so a regeneration that drifts is a red test. `neutro` must
+  equal `CurveFile::neutral()`.
+
+Searched prior art while planning: the official page is WebHID
+(`equalizador.kuba.audio`), Danger Circuits shipped an Android WebView bridge
+(no source), and the wider ecosystem (AutoEq, EasyEffects, Equalizer APO) has
+import/export formats. None of that is needed for a preset list; open-auri's
+`io/equalizer-apo.mjs` is the natural next step **if** export is ever wanted.
 
 ---
 

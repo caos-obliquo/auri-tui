@@ -5,6 +5,7 @@
 //! gate approves, because nothing reaches the cable without a gate.
 
 mod curve;
+mod presets;
 mod tui;
 
 use std::process::ExitCode;
@@ -33,6 +34,8 @@ struct Cli {
 enum Command {
     /// List the cables this user can open.
     Devices,
+    /// List the built-in Kuba Auri presets.
+    Presets,
     /// Show a curve as the nine reports and its safety verdict.
     Show {
         /// Path to a JSON curve file ({"preampDb": .., "eqBands": [..]}).
@@ -41,7 +44,11 @@ enum Command {
     /// Encode a curve and (dry-run) print the frames.
     Write {
         /// Path to a JSON curve file.
-        file: std::path::PathBuf,
+        #[arg(required_unless_present = "preset", conflicts_with = "preset")]
+        file: Option<std::path::PathBuf>,
+        /// Built-in preset id instead of a file (see `auri presets`).
+        #[arg(long, value_name = "ID")]
+        preset: Option<String>,
         /// Run the safety gate and write RAM, then flash. Refused if the gate
         /// refuses.
         #[arg(long)]
@@ -63,7 +70,11 @@ enum Command {
     /// Interactive editor: vim motions, a live gate verdict, a real write.
     Tui {
         /// Curve to start from (defaults to the neutral preset).
+        #[arg(conflicts_with = "preset")]
         file: Option<std::path::PathBuf>,
+        /// Built-in preset id to start from (see `auri presets`).
+        #[arg(long, value_name = "ID")]
+        preset: Option<String>,
         /// Send to the cable instead of dry-running. Still gated, still
         /// needs an explicit `w` twice.
         #[arg(long)]
@@ -102,6 +113,18 @@ fn run() -> Result<(), String> {
             }
             Ok(())
         }
+        Command::Presets => {
+            println!("{:<10}  {:<16}  {:>9}  crc", "id", "label", "preamp");
+            for preset in &presets::PRESETS {
+                println!(
+                    "{:<10}  {:<16}  {:>+6.1} dB  0x{:04x}",
+                    preset.id, preset.label, preset.preamp_db, preset.crc
+                );
+            }
+            println!();
+            println!("load one with: auri tui --preset <id>   (or auri write --preset <id>)");
+            Ok(())
+        }
         Command::Show { file } => {
             let curve = CurveFile::load(&file).map_err(|e| e.to_string())?;
             let verdict = judge(&curve, false);
@@ -109,18 +132,41 @@ fn run() -> Result<(), String> {
             print_report(curve.encode().map_err(|e| e.to_string())?);
             Ok(())
         }
-        Command::Write { file, commit, yolo } => {
-            let curve = CurveFile::load(&file).map_err(|e| e.to_string())?;
+        Command::Write {
+            file,
+            preset,
+            commit,
+            yolo,
+        } => {
+            let curve = curve_arg(file, preset)?;
             send(&curve, commit, yolo)
         }
         Command::Neutral { commit, yolo } => send(&CurveFile::neutral(), commit, yolo),
-        Command::Tui { file, commit, yolo } => {
-            let curve = match file {
-                Some(path) => CurveFile::load(&path).map_err(|e| e.to_string())?,
-                None => CurveFile::neutral(),
-            };
+        Command::Tui {
+            file,
+            preset,
+            commit,
+            yolo,
+        } => {
+            let curve = curve_arg(file, preset)?;
             tui::run(curve, commit, yolo)
         }
+    }
+}
+
+/// The curve the user named: a built-in preset, a JSON file, or the neutral
+/// curve when neither is given.
+fn curve_arg(
+    file: Option<std::path::PathBuf>,
+    preset: Option<String>,
+) -> Result<CurveFile, String> {
+    match (file, preset) {
+        (Some(path), None) => CurveFile::load(&path).map_err(|e| e.to_string()),
+        (None, Some(id)) => presets::find(&id)
+            .map(presets::Preset::curve)
+            .ok_or_else(|| format!("unknown preset {id:?}; try `auri presets`")),
+        (None, None) => Ok(CurveFile::neutral()),
+        (Some(_), Some(_)) => Err("pass a curve file or --preset, not both".to_string()),
     }
 }
 
