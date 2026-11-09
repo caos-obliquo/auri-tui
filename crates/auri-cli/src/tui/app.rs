@@ -445,9 +445,11 @@ impl App {
         // From a custom curve `}` starts at the first preset and `{` at the
         // last: "no preset" counts as one step before the first (for `}`) or
         // at the first (for `{`).
-        let current = self.preset_index.map_or(if direction >= 0 { -1 } else { 0 }, |index| {
-            i32::try_from(index).unwrap_or(0)
-        });
+        let current = self
+            .preset_index
+            .map_or(if direction >= 0 { -1 } else { 0 }, |index| {
+                i32::try_from(index).unwrap_or(0)
+            });
         let next = (current + direction).rem_euclid(len) as usize;
         self.load_preset(next);
     }
@@ -1300,5 +1302,4 @@ mod tests {
         assert_eq!(app.bands, crate::presets::PRESETS[0].bands.to_vec());
         assert_eq!(app.preset_index, None);
     }
-
 }

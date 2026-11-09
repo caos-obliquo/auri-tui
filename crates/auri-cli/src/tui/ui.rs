@@ -58,7 +58,10 @@ fn header(frame: &mut Frame, app: &App, area: Rect) {
         .preset_index
         .and_then(|index| presets::PRESETS.get(index))
     {
-        spans.push(Span::styled("   preset ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            "   preset ",
+            Style::default().fg(Color::DarkGray),
+        ));
         spans.push(Span::styled(
             format!("{} [RO]", preset.label),
             Style::default().fg(Color::Cyan),
