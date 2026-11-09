@@ -8,6 +8,7 @@ mod curve;
 mod presets;
 mod tui;
 
+use std::io::Write;
 use std::process::ExitCode;
 
 use auri_gate::{GateOptions, GateResult, Profile, Reason, ReasonValue, gate_for_write, level_db};
@@ -34,13 +35,23 @@ struct Cli {
 enum Command {
     /// List the cables this user can open.
     Devices,
-    /// List the built-in Kuba Auri presets.
-    Presets,
     /// Show a curve as the nine reports and its safety verdict.
     Show {
         /// Path to a JSON curve file ({"preampDb": .., "eqBands": [..]}).
-        file: std::path::PathBuf,
+        #[arg(required_unless_present = "preset", conflicts_with = "preset")]
+        file: Option<std::path::PathBuf>,
+        /// Built-in preset id instead of a file (see `auri presets`).
+        #[arg(long, value_name = "ID")]
+        preset: Option<String>,
+        /// Run the safety gate and print the verdict.
+        #[arg(long)]
+        commit: bool,
+        /// Judge under the yolo profile.
+        #[arg(long)]
+        yolo: bool,
     },
+    /// List the built-in Kuba Auri presets.
+    Presets,
     /// Encode a curve and (dry-run) print the frames.
     Write {
         /// Path to a JSON curve file.
@@ -89,10 +100,27 @@ fn main() -> ExitCode {
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("auri: {error}");
+            err(format_args!("auri: {error}"));
             ExitCode::FAILURE
         }
     }
+}
+
+/// Writes one line to stdout. A closed stdout (broken pipe) is not a panic:
+/// the command simply has nobody left to print to.
+#[allow(clippy::write_with_newline)]
+fn out(args: std::fmt::Arguments<'_>) {
+    let mut buf = Vec::new();
+    let _ = write!(buf, "{args}\n");
+    let _ = std::io::stdout().write_all(&buf);
+}
+
+/// Writes one line to stderr, with the same broken-pipe tolerance as [`out`].
+#[allow(clippy::write_with_newline)]
+fn err(args: std::fmt::Arguments<'_>) {
+    let mut buf = Vec::new();
+    let _ = write!(buf, "{args}\n");
+    let _ = std::io::stderr().write_all(&buf);
 }
 
 fn run() -> Result<(), String> {
@@ -100,33 +128,54 @@ fn run() -> Result<(), String> {
         Command::Devices => {
             let found = auri_transport::RealHid::list().map_err(|e| e.to_string())?;
             if found.is_empty() {
-                println!(
+                out(format_args!(
                     "no cable found ({}:{:04x})",
                     auri_codec::USB_VID,
                     auri_codec::USB_PID
-                );
-                println!("check the udev rules: 99-kuba-auri.rules, then replug");
+                ));
+                out(format_args!(
+                    "check the udev rules: 99-kuba-auri.rules, then replug"
+                ));
             } else {
                 for entry in found {
-                    println!("{entry}");
+                    out(format_args!("{entry}"));
                 }
             }
             Ok(())
         }
         Command::Presets => {
-            println!("{:<10}  {:<16}  {:>9}  crc", "id", "label", "preamp");
+            out(format_args!(
+                "{:<10}  {:<16}  {:>9}  crc",
+                "id", "label", "preamp"
+            ));
             for preset in &presets::PRESETS {
-                println!(
+                out(format_args!(
                     "{:<10}  {:<16}  {:>+6.1} dB  0x{:04x}",
                     preset.id, preset.label, preset.preamp_db, preset.crc
-                );
+                ));
             }
-            println!();
-            println!("load one with: auri tui --preset <id>   (or auri write --preset <id>)");
+            out(format_args!(""));
+            out(format_args!(
+                "load one with: auri tui --preset <id>   (or auri write --preset <id>)"
+            ));
             Ok(())
         }
-        Command::Show { file } => {
-            let curve = CurveFile::load(&file).map_err(|e| e.to_string())?;
+        Command::Show {
+            file,
+            preset,
+            commit: _,
+            yolo: _,
+        } => {
+            let curve = match (file, preset) {
+                (Some(path), None) => CurveFile::load(&path).map_err(|e| e.to_string())?,
+                (None, Some(id)) => presets::find(&id)
+                    .map(presets::Preset::curve)
+                    .ok_or_else(|| format!("unknown preset {id:?}; try `auri presets`"))?,
+                (None, None) => CurveFile::neutral(),
+                (Some(_), Some(_)) => {
+                    return Err("pass a curve file or --preset, not both".to_string());
+                }
+            };
             let verdict = judge(&curve, false);
             print_verdict(&verdict, false);
             print_report(curve.encode().map_err(|e| e.to_string())?);
@@ -148,8 +197,9 @@ fn run() -> Result<(), String> {
             commit,
             yolo,
         } => {
+            let preset_index = preset.as_deref().and_then(presets::index_of);
             let curve = curve_arg(file, preset)?;
-            tui::run(curve, commit, yolo)
+            tui::run(curve, preset_index, commit, yolo)
         }
     }
 }
@@ -191,7 +241,9 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
     print_verdict(&verdict, yolo);
 
     if !commit {
-        println!("dry-run: nothing written (pass --commit to write the cable)");
+        out(format_args!(
+            "dry-run: nothing written (pass --commit to write the cable)"
+        ));
         print_report(reports);
         return refused(&verdict);
     }
@@ -219,7 +271,9 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
     let entries = match journal_read(&journal_path) {
         Ok(entries) => entries,
         Err(error) => {
-            eprintln!("auri: journal unreadable ({error}); assuming no history");
+            err(format_args!(
+                "auri: journal unreadable ({error}); assuming no history"
+            ));
             Vec::new()
         }
     };
@@ -240,7 +294,7 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
 
     let mut writer = CurveWriter::new(RealHid::open().map_err(|e| e.to_string())?);
     let label = writer.sink().label().to_string();
-    println!("writing to {label} ...");
+    out(format_args!("writing to {label} ..."));
     let outcome = writer.write_curve(&reports, true);
     let stamped = now_ms();
 
@@ -252,7 +306,7 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
         Err(_) => flash.last_write_at = Some(stamped),
     }
     if let Err(error) = save_flash(&flash_path, &flash) {
-        eprintln!("auri: flash counters not saved ({error})");
+        err(format_args!("auri: flash counters not saved ({error})"));
     }
 
     // Exactly one journal entry, after the transport settles. A failure here
@@ -279,34 +333,38 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
         label,
     };
     if let Err(error) = journal_append(&journal_path, &entry) {
-        eprintln!("auri: journal not appended ({error}); nothing is re-sent");
+        err(format_args!(
+            "auri: journal not appended ({error}); nothing is re-sent"
+        ));
     }
 
     outcome.map_err(|e| e.to_string())?;
 
     let crc = verdict.metrics.payload_crc.as_deref().unwrap_or("unknown");
-    println!("written to the cable. CRC {crc}");
+    out(format_args!("written to the cable. CRC {crc}"));
     if let Some(level) = level {
-        println!("predicted level 300 Hz–3 kHz: {level:+.2} dB");
+        out(format_args!("predicted level 300 Hz–3 kHz: {level:+.2} dB"));
     }
     match last_level {
-        Some(last) => println!("last written curve: {last:+.2} dB"),
-        None => println!("last written curve: unknown"),
+        Some(last) => out(format_args!("last written curve: {last:+.2} dB")),
+        None => out(format_args!("last written curve: unknown")),
     }
     if let Some(delta) = loudness.delta_db {
-        println!("jump: {delta:+.2} dB");
+        out(format_args!("jump: {delta:+.2} dB"));
     }
     if loudness.warn {
-        println!("{LOUDNESS_WARNING_TEXT}");
+        out(format_args!("{LOUDNESS_WARNING_TEXT}"));
     }
     let counters = counters(&flash, stamped);
-    println!(
+    out(format_args!(
         "flash counters: {} this session · {} today · {} in total",
         counters.session, counters.day, counters.total
-    );
-    println!("2 s spacing between writes respected (next write in 2.0 s)");
+    ));
+    out(format_args!(
+        "2 s spacing between writes respected (next write in 2.0 s)"
+    ));
     if daily_notice(&flash, stamped) {
-        println!("{FLASH_NOTICE_TEXT}");
+        out(format_args!("{FLASH_NOTICE_TEXT}"));
     }
     Ok(())
 }
@@ -326,18 +384,18 @@ fn refused(verdict: &GateResult) -> Result<(), String> {
 fn print_verdict(verdict: &GateResult, yolo: bool) {
     let profile = if yolo { "yolo" } else { "standard" };
     if verdict.ok {
-        println!(
+        out(format_args!(
             "gate: PASS ({profile} profile), CRC {}",
             verdict.metrics.payload_crc.as_deref().unwrap_or("unknown")
-        );
+        ));
     } else {
-        println!("gate: REFUSED ({profile} profile)");
+        out(format_args!("gate: REFUSED ({profile} profile)"));
     }
     for reason in &verdict.reasons {
-        println!("  {}", describe(reason));
+        out(format_args!("  {}", describe(reason)));
     }
     for reason in verdict.waived_reasons.iter().flatten() {
-        println!("  waived: {}", describe(reason));
+        out(format_args!("  waived: {}", describe(reason)));
     }
 }
 
@@ -363,11 +421,11 @@ fn print_report(reports: Vec<[u8; auri_codec::REPORT_SIZE]>) {
         for byte in report {
             hex.push_str(&format!("{byte:02x} "));
         }
-        println!(
+        out(format_args!(
             "report {} ({:02x}): {hex}",
             report[0],
             auri_codec::HID_REPORT_ID
-        );
+        ));
     }
 }
 

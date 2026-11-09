@@ -33,8 +33,14 @@ const TICK: Duration = Duration::from_millis(200);
 /// Terminal setup or I/O problems. A write that fails is reported on the
 /// status line instead, so the editor never dies because a cable was
 /// unplugged at the wrong moment.
-pub fn run(curve: CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
+pub fn run(
+    curve: CurveFile,
+    preset_index: Option<usize>,
+    commit: bool,
+    yolo: bool,
+) -> Result<(), String> {
     let mut app = App::new(curve.eq_bands, curve.preamp_db, yolo);
+    app.preset_index = preset_index;
     app.target = if commit { "the cable" } else { "dry-run" }.to_string();
     // try_init, never init: a missing or unusable TTY must be an error the
     // caller prints, not a panic — and a half-applied raw mode still gets

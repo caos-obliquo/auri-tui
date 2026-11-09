@@ -110,6 +110,12 @@ pub fn find(id: &str) -> Option<&'static Preset> {
     PRESETS.iter().find(|preset| preset.id == id)
 }
 
+/// The position of a preset in \`PRESETS\`, for the TUI's \`{\`/\`}\` cycling.
+#[must_use]
+pub fn index_of(id: &str) -> Option<usize> {
+    PRESETS.iter().position(|preset| preset.id == id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

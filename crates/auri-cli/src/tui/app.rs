@@ -6,7 +6,7 @@
 
 use std::path::PathBuf;
 
-use auri_codec::{BAND_COUNT, Band, BandKind, NEUTRAL_BANDS};
+use auri_codec::{Band, BandKind, NEUTRAL_BANDS};
 use auri_gate::{GAIN_MAX_DB, GAIN_MIN_DB, GateOptions, GateResult, Profile, gate_for_write};
 use auri_policy::{
     ChecklistContext, ChecklistInput, ChecklistResult, Confirmations, FlashState, ItemId,
@@ -154,6 +154,9 @@ pub struct App {
     pub bands: Vec<Band>,
     /// The curve the TUI started from, for `r` (reset).
     pub original: Vec<Band>,
+    /// Position in `crate::presets::PRESETS`, while the curve is that preset
+    /// verbatim. Any edit clears it; `{`/`}` cycle it.
+    pub preset_index: Option<usize>,
     /// Preamp in dB.
     pub preamp_db: f64,
     /// Selected band, `0..BAND_COUNT`.
@@ -249,6 +252,7 @@ impl App {
         let mut app = App {
             bands,
             original: Vec::new(),
+            preset_index: None,
             preamp_db,
             row: 0,
             col: Col::Kind,
@@ -270,9 +274,30 @@ impl App {
             env,
         };
         app.original = app.bands.clone();
+        app.clamp_row();
         app.recompute();
         app.status = "ready".to_string();
         app
+    }
+
+    /// The band under the cursor, or `None` when the curve has no bands.
+    fn band(&self) -> Option<&Band> {
+        self.bands.get(self.row)
+    }
+
+    /// The band under the cursor, mutably, or `None` when the curve has no bands.
+    fn band_mut(&mut self) -> Option<&mut Band> {
+        self.bands.get_mut(self.row)
+    }
+
+    /// Keeps `row` inside the curve after construction or a curve replacement.
+    /// An empty curve keeps row 0; every edit then becomes a safe no-op.
+    fn clamp_row(&mut self) {
+        self.row = if self.bands.is_empty() {
+            0
+        } else {
+            self.row.min(self.bands.len() - 1)
+        };
     }
 
     /// The ten pass-through sections at the official −0.5 dB preamp.
@@ -383,10 +408,48 @@ impl App {
 
     /// Every edit invalidates an armed write: arming must be the last thing
     /// that happens before a send, never something that survives a change.
+    /// An edit also ends the "this is an official preset" marker: the curve
+    /// on screen is no longer the preset verbatim.
     fn edited(&mut self, status: impl Into<String>) {
         self.armed = false;
+        self.preset_index = None;
         self.recompute();
         self.status = status.into();
+    }
+
+    /// Loads the preset at `index` into the editor. A preset load is an edit:
+    /// it goes through [`App::edited`], so an armed write never survives it —
+    /// the marker is set *after* `edited` cleared it. The loaded curve becomes
+    /// the new `r` target, so `r` and the `[RO]` marker always agree.
+    fn load_preset(&mut self, index: usize) {
+        let Some(preset) = crate::presets::PRESETS.get(index) else {
+            return;
+        };
+        self.bands = preset.bands.to_vec();
+        self.preamp_db = preset.preamp_db;
+        self.original = self.bands.clone();
+        self.clamp_row();
+        let label = preset.label;
+        self.edited(format!("loaded preset {label}"));
+        self.preset_index = Some(index);
+    }
+
+    /// Steps to the previous (`-1`) or next (`+1`) preset through the built-in
+    /// list, wrapping at both ends. From a custom curve, `}` starts at the
+    /// first preset and `{` at the last.
+    fn cycle_preset(&mut self, direction: i32) {
+        let len = i32::try_from(crate::presets::PRESETS.len()).unwrap_or(0);
+        if len == 0 {
+            return;
+        }
+        // From a custom curve `}` starts at the first preset and `{` at the
+        // last: "no preset" counts as one step before the first (for `}`) or
+        // at the first (for `{`).
+        let current = self.preset_index.map_or(if direction >= 0 { -1 } else { 0 }, |index| {
+            i32::try_from(index).unwrap_or(0)
+        });
+        let next = (current + direction).rem_euclid(len) as usize;
+        self.load_preset(next);
     }
 
     /// Handles one key and reports what the runner must do next.
@@ -433,7 +496,9 @@ impl App {
             }
             // Vim motions: h/l walk the columns, j/k walk the bands.
             Key::Char('j') | Key::Down => {
-                self.row = (self.row + 1).min(BAND_COUNT - 1);
+                if !self.bands.is_empty() {
+                    self.row = (self.row + 1).min(self.bands.len() - 1);
+                }
                 Effect::Nothing
             }
             Key::Char('k') | Key::Up => {
@@ -453,7 +518,7 @@ impl App {
                 Effect::Nothing
             }
             Key::Char('G') => {
-                self.row = BAND_COUNT - 1;
+                self.row = self.bands.len().saturating_sub(1);
                 Effect::Nothing
             }
             Key::Char('+') | Key::Char('=') => {
@@ -469,11 +534,15 @@ impl App {
                 Effect::Nothing
             }
             Key::Char('x') => {
-                let band = self.bands[self.row];
+                let Some(band) = self.band().copied() else {
+                    return Effect::Nothing;
+                };
                 if band.kind() == BandKind::Off {
                     self.status = format!("band {} is already off", self.row + 1);
                 } else {
-                    self.bands[self.row] = Band::Off;
+                    if let Some(slot) = self.band_mut() {
+                        *slot = Band::Off;
+                    }
                     self.edited(format!("band {} set to OFF", self.row + 1));
                 }
                 Effect::Nothing
@@ -496,14 +565,24 @@ impl App {
                 self.edited(format!("layer: {layer}"));
                 Effect::Nothing
             }
+            Key::Char('{') => {
+                self.cycle_preset(-1);
+                Effect::Nothing
+            }
+            Key::Char('}') => {
+                self.cycle_preset(1);
+                Effect::Nothing
+            }
             Key::Char('n') => {
                 self.bands = NEUTRAL_BANDS.to_vec();
                 self.preamp_db = -0.5;
+                self.clamp_row();
                 self.edited("loaded Neutro".to_string());
                 Effect::Nothing
             }
             Key::Char('r') => {
                 self.bands = self.original.clone();
+                self.clamp_row();
                 self.edited("restored the curve this session started from".to_string());
                 Effect::Nothing
             }
@@ -527,7 +606,7 @@ impl App {
                 Effect::Nothing
             }
             Key::Char('?') => {
-                self.status = "hjkl move · +/- step · c kind · x off · t yolo · e layer · Tab focus · Space tick · w write · q quit"
+                self.status = "hjkl move · +/- step · c kind · x off · { } preset · t yolo · e layer · Tab focus · Space tick · w write · q quit"
                     .to_string();
                 Effect::Nothing
             }
@@ -539,7 +618,11 @@ impl App {
     pub fn adjust(&mut self, direction: i32) {
         let row = self.row;
         let col = self.col;
-        let band = activate(self.bands[row]);
+        let Some(current) = self.bands.get(row).copied() else {
+            // An empty curve has nothing to step: a safe no-op.
+            return;
+        };
+        let band = activate(current);
 
         match col {
             Col::Kind => {
@@ -548,8 +631,10 @@ impl App {
             }
             Col::Freq => {
                 let freq = band.freq_hz().unwrap_or(1_000.0) * LOG_STEP.powi(direction);
-                self.bands[row] =
-                    with_values(band, Some(freq.clamp(FREQ_MIN, FREQ_MAX)), None, None);
+                let next = with_values(band, Some(freq.clamp(FREQ_MIN, FREQ_MAX)), None, None);
+                if let Some(slot) = self.bands.get_mut(row) {
+                    *slot = next;
+                }
             }
             Col::Gain => {
                 if !band.kind().has_gain() {
@@ -558,19 +643,31 @@ impl App {
                 }
                 let gain = (band.gain_db() + GAIN_STEP * f64::from(direction))
                     .clamp(GAIN_MIN_DB, GAIN_MAX_DB);
-                self.bands[row] = with_values(band, None, Some(gain), None);
+                let next = with_values(band, None, Some(gain), None);
+                if let Some(slot) = self.bands.get_mut(row) {
+                    *slot = next;
+                }
             }
             Col::Q => {
                 let q = band.q_factor().unwrap_or(1.0) * LOG_STEP.powi(direction);
-                self.bands[row] = with_values(band, None, None, Some(q.clamp(Q_MIN, Q_MAX)));
+                let next = with_values(band, None, None, Some(q.clamp(Q_MIN, Q_MAX)));
+                if let Some(slot) = self.bands.get_mut(row) {
+                    *slot = next;
+                }
             }
         }
 
         let label = col.label();
         let value = match col {
-            Col::Freq => format!("{:.1} Hz", self.bands[row].freq_hz().unwrap_or_default()),
-            Col::Gain => format!("{:+.1} dB", self.bands[row].gain_db()),
-            Col::Q => format!("{:.2}", self.bands[row].q_factor().unwrap_or_default()),
+            Col::Freq => format!(
+                "{:.1} Hz",
+                self.band().and_then(|b| b.freq_hz()).unwrap_or_default()
+            ),
+            Col::Gain => format!("{:+.1} dB", self.band().map_or(0.0, |b| b.gain_db())),
+            Col::Q => format!(
+                "{:.2}",
+                self.band().and_then(|b| b.q_factor()).unwrap_or_default()
+            ),
             Col::Kind => String::new(),
         };
         self.edited(if value.is_empty() {
@@ -595,10 +692,14 @@ impl App {
             &[BandKind::Pk, BandKind::Ls, BandKind::Off]
         };
 
-        let current = self.bands[self.row].kind();
+        let Some(current) = self.band().map(|b| b.kind()) else {
+            return;
+        };
         let index = allowed.iter().position(|&k| k == current).unwrap_or(0);
         let next = allowed[(index + 1) % allowed.len()];
-        self.bands[self.row] = retarget(self.bands[self.row], next);
+        if let Some(slot) = self.band_mut() {
+            *slot = retarget(*slot, next);
+        }
         self.edited(format!("band {} → {}", self.row + 1, next.as_str()));
     }
 }
@@ -748,7 +849,7 @@ mod tests {
         for _ in 0..50 {
             app.handle_key(Key::Char('j'));
         }
-        assert_eq!(app.row, BAND_COUNT - 1);
+        assert_eq!(app.row, auri_codec::BAND_COUNT - 1);
         for _ in 0..50 {
             app.handle_key(Key::Char('k'));
         }
@@ -763,7 +864,7 @@ mod tests {
         assert_eq!(app.col, Col::Q, "h wraps backwards too");
 
         app.handle_key(Key::Char('G'));
-        assert_eq!(app.row, BAND_COUNT - 1);
+        assert_eq!(app.row, auri_codec::BAND_COUNT - 1);
         app.handle_key(Key::Char('g'));
         assert_eq!(app.row, 0);
         app.handle_key(Key::Down);
@@ -1102,4 +1203,102 @@ mod tests {
         assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
         assert!(app.armed);
     }
+
+    #[test]
+    fn empty_band_list_is_a_safe_no_op() {
+        let mut app = App::with_env(Vec::new(), -0.5, false, test_env(0));
+        assert_eq!(app.row, 0);
+        for key in [
+            Key::Char('j'),
+            Key::Char('k'),
+            Key::Char('G'),
+            Key::Char('g'),
+            Key::Down,
+            Key::Up,
+            Key::Char('+'),
+            Key::Char('-'),
+            Key::Char('x'),
+            Key::Char('n'),
+            Key::Char('r'),
+            Key::Char(','),
+            Key::Char('.'),
+        ] {
+            app.handle_key(key);
+        }
+        app.adjust(1);
+        app.adjust(-1);
+        app.cycle_kind();
+        // Row stays 0, no panic, verdict is a codec refusal (empty curve).
+        assert_eq!(app.row, 0);
+        assert!(!app.verdict.ok, "empty curve must not pass the gate");
+    }
+
+    #[test]
+    fn single_band_curve_clamps_row() {
+        let mut app = App::with_env(vec![Band::Off], -0.5, false, test_env(0));
+        for _ in 0..20 {
+            app.handle_key(Key::Char('j'));
+        }
+        assert_eq!(app.row, 0, "row clamps to the only band");
+        app.handle_key(Key::Char('G'));
+        assert_eq!(app.row, 0);
+        app.handle_key(Key::Char('+'));
+        app.adjust(1);
+        app.cycle_kind();
+    }
+
+    #[test]
+    fn preset_cycling_loads_official_curves_and_wraps() {
+        let mut app = app();
+        assert_eq!(app.preset_index, None, "file curve: no preset marker");
+        // From a custom curve, `}` starts at the first preset.
+        app.handle_key(Key::Char('}'));
+        assert_eq!(app.preset_index, Some(0));
+        assert_eq!(
+            app.bands,
+            crate::presets::PRESETS[0].bands.to_vec(),
+            "the loaded curve must be the official one, verbatim"
+        );
+        assert_eq!(app.preamp_db, crate::presets::PRESETS[0].preamp_db);
+        assert!(app.verdict.ok, "official presets pass the standard gate");
+
+        app.handle_key(Key::Char('}'));
+        assert_eq!(app.preset_index, Some(1));
+        for _ in 0..crate::presets::PRESETS.len() {
+            app.handle_key(Key::Char('}'));
+        }
+        assert_eq!(app.preset_index, Some(1), "cycling a full turn wraps");
+        app.handle_key(Key::Char('{'));
+        assert_eq!(app.preset_index, Some(0));
+        app.handle_key(Key::Char('{'));
+        assert_eq!(
+            app.preset_index,
+            Some(crate::presets::PRESETS.len() - 1),
+            "`{{` wraps backwards to the last preset"
+        );
+    }
+
+    #[test]
+    fn loading_a_preset_disarms_and_an_edit_clears_the_marker() {
+        let mut app = ready(false);
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(app.armed);
+        app.handle_key(Key::Char('}'));
+        assert!(!app.armed, "a preset load is an edit: it must disarm");
+        assert_eq!(app.preset_index, Some(0));
+
+        // Cursor motion is not an edit: the marker survives it.
+        app.handle_key(Key::Char('j'));
+        assert_eq!(app.preset_index, Some(0));
+        // Stepping a value is an edit: the curve is no longer the preset.
+        app.handle_key(Key::Char('+'));
+        assert_eq!(app.preset_index, None);
+
+        // `r` restores the preset just loaded (it became the session target),
+        // and the marker is already gone — restore never resurrects a stale one.
+        app.handle_key(Key::Char('r'));
+        assert_eq!(app.bands, crate::presets::PRESETS[0].bands.to_vec());
+        assert_eq!(app.preset_index, None);
+    }
+
 }

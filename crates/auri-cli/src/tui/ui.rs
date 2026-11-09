@@ -8,6 +8,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
+use crate::presets;
 use crate::tui::app::{App, Col, Focus};
 use crate::tui::plot;
 
@@ -40,7 +41,7 @@ fn header(frame: &mut Frame, app: &App, area: Rect) {
         "ajustar"
     };
     let armed = if app.armed { "  ARMED" } else { "" };
-    let line = Line::from(vec![
+    let mut spans = vec![
         Span::styled("profile ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             app.profile.as_str(),
@@ -50,6 +51,20 @@ fn header(frame: &mut Frame, app: &App, area: Rect) {
         ),
         Span::styled("   layer ", Style::default().fg(Color::DarkGray)),
         Span::styled(layer, Style::default().fg(Color::Cyan)),
+    ];
+    // A read-only marker (like eqtui's): the curve is an official preset,
+    // verbatim. It is cosmetic — writing is gated exactly as for any curve.
+    if let Some(preset) = app
+        .preset_index
+        .and_then(|index| presets::PRESETS.get(index))
+    {
+        spans.push(Span::styled("   preset ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(
+            format!("{} [RO]", preset.label),
+            Style::default().fg(Color::Cyan),
+        ));
+    }
+    spans.extend(vec![
         Span::styled("   preamp ", Style::default().fg(Color::DarkGray)),
         Span::styled(
             format!("{:+.1} dB", app.preamp_db),
@@ -65,6 +80,7 @@ fn header(frame: &mut Frame, app: &App, area: Rect) {
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
         ),
     ]);
+    let line = Line::from(spans);
 
     let block = Block::bordered().title(" kuba auri — CB5100 DSP ");
     frame.render_widget(Paragraph::new(line).block(block), area);
@@ -80,7 +96,7 @@ fn body(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn bands(frame: &mut Frame, app: &App, area: Rect) {
-    let block = Block::bordered().title(" bands  hjkl move  +- step  c kind  x off ");
+    let block = Block::bordered().title(" bands  hjkl move  +- step  c kind  x off  { } preset ");
     let inner = block.inner(area);
     frame.render_widget(block, area);
     if inner.height == 0 || inner.width == 0 {
@@ -530,6 +546,19 @@ mod tests {
 
         app.handle_key(Key::Esc);
         assert!(!screen(&app).contains("ARMED"));
+    }
+
+    #[test]
+    fn a_preset_in_the_header_shows_the_read_only_marker() {
+        let mut app = ready();
+        assert!(!screen(&app).contains("[RO]"), "file curve: no marker");
+        app.handle_key(Key::Char('}'));
+        let text = screen(&app);
+        assert!(text.contains("[RO]"), "preset must carry [RO]: {text}");
+        assert!(
+            text.contains(crate::presets::PRESETS[0].label),
+            "the preset label must be named: {text}"
+        );
     }
 
     #[test]
