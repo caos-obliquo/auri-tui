@@ -9,6 +9,10 @@ Independent implementation. **Not a fork** of
 [open-auri](https://github.com/) — no source is copied from it; see
 `THIRD_PARTY_NOTICES.md`.
 
+> **Working on this repo?** Read [`TODO.md`](TODO.md) first — it holds the
+> module map, the safety invariants, and the full spec for the remaining
+> milestones. Nothing else in the tree carries them.
+
 ## Workspace
 
 | Crate | Description |
