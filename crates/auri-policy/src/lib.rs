@@ -26,10 +26,10 @@ mod loudness;
 mod store;
 
 pub use checklist::{
-    ChecklistContext, ChecklistInput, ChecklistItem, ChecklistResult, Confirmations, CriterionValue,
-    EXPERIMENTAL_TEXT, ItemId, LOCKED_TEXT, Lamp, LampId, LampState, LAMPS, ULTRASONIC_TEXT,
-    criteria_values, evaluate_checklist, experimental_text, has_experimental_kinds,
-    has_ultrasonic_bands, lamp_of, lamps_from_gate,
+    ChecklistContext, ChecklistInput, ChecklistItem, ChecklistResult, Confirmations,
+    CriterionValue, EXPERIMENTAL_TEXT, ItemId, LAMPS, LOCKED_TEXT, Lamp, LampId, LampState,
+    ULTRASONIC_TEXT, criteria_values, evaluate_checklist, experimental_text,
+    has_experimental_kinds, has_ultrasonic_bands, lamp_of, lamps_from_gate,
 };
 pub use flash::{
     Counters, DAILY_NOTICE_THRESHOLD, FLASH_NOTICE_TEXT, FlashDay, FlashError, FlashState,
@@ -38,8 +38,8 @@ pub use flash::{
     record_write_on, save_flash,
 };
 pub use journal::{
-    JournalEntry, JournalError, JournalStatus, append as journal_append, journal_path,
-    last_status, last_written_level_db, read as journal_read,
+    JournalEntry, JournalError, JournalStatus, append as journal_append, journal_path, last_status,
+    last_written_level_db, read as journal_read,
 };
 pub use loudness::{
     LOUDNESS_JUMP_DB, LOUDNESS_TOLERANCE_DB, LOUDNESS_WARNING_TEXT, Loudness, LoudnessInput,

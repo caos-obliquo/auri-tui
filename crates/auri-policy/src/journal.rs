@@ -116,11 +116,10 @@ pub fn read(path: &Path) -> Result<Vec<JournalEntry>, JournalError> {
         if line.trim().is_empty() {
             continue;
         }
-        let entry =
-            serde_json::from_str::<JournalEntry>(line).map_err(|_| JournalError::Line {
-                path: path.to_path_buf(),
-                line: index + 1,
-            })?;
+        let entry = serde_json::from_str::<JournalEntry>(line).map_err(|_| JournalError::Line {
+            path: path.to_path_buf(),
+            line: index + 1,
+        })?;
         entries.push(entry);
     }
     Ok(entries)
@@ -221,7 +220,10 @@ mod tests {
         );
 
         assert_eq!(
-            last_status(&[entry(1_000, JournalStatus::Ok), entry(2_000, JournalStatus::Interrupted)]),
+            last_status(&[
+                entry(1_000, JournalStatus::Ok),
+                entry(2_000, JournalStatus::Interrupted)
+            ]),
             Some(JournalStatus::Interrupted),
             "the newest entry's status is what the next session sees"
         );

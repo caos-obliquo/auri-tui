@@ -76,9 +76,7 @@ impl Grid {
 }
 
 /// Which set of limits a verdict is judged against.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Profile {
     /// The default: blocks on every reason.
