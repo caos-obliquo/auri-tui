@@ -6,7 +6,7 @@ Native Rust, ratatui-based TUI, pure vim motions (`h/j/k/l`), talking straight
 to the system's USB/HID subsystem.
 
 Independent implementation. **Not a fork** of
-[open-auri](https://github.com/) — no source is copied from it; see
+[open-auri](https://github.com/marco-jardim/open-auri) — no source is copied from it; see
 `THIRD_PARTY_NOTICES.md`.
 
 > **Working on this repo?** Read [`TODO.md`](TODO.md) first — it holds the
@@ -19,8 +19,9 @@ Independent implementation. **Not a fork** of
 |---|---|
 | `auri-codec` | Byte-exact `0xCB` wire codec: RBJ/AutoEq biquads → Q23/Q27 words → CRC-16 → 9 reports |
 | `auri-gate` | Safety gate v2: the observed envelope of the 11 official presets, verdict before any write |
+| `auri-policy` | Pre-write policy: flash counters and 2 s spacing, loudness warning, JSONL journal, checklist |
 | `auri-transport` | HID transport: real cable (`hidapi`), recording fake, dry-run writer |
-| `auri-cli` | The `auri` binary: `devices`, `show`, `write`, `neutral`, `tui` |
+| `auri-cli` | The `auri` binary: `devices`, `presets`, `show`, `write`, `neutral`, `tui` |
 
 ## Safety invariants
 
@@ -55,6 +56,11 @@ cd auri-tui
 cargo build --release
 ```
 
+Prebuilt Linux binaries are attached to
+[releases](https://github.com/caos-obliquo/auri-tui/releases). The binary links
+`libudev` at runtime (hidapi enumerates hidraw through udev); every systemd
+distribution has it.
+
 ### udev rules (Linux)
 
 Without these, Chromium/WebHID and this binary both fail to open the device
@@ -71,7 +77,8 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
 Then replug the cable. Verify with `ls -l /dev/hidraw*` and
-`cargo run -p auri-cli -- devices`.
+`cargo run -p auri-cli -- devices`. See [`docs/udev.md`](docs/udev.md) for the
+Chromium/WebHID failure mode and the audio-vs-HID interface split.
 
 ## Usage
 
@@ -90,6 +97,12 @@ auri neutral --commit
 
 # Judge under the yolo profile: class-2 reasons are waived, hard ones never are
 auri write curve.json --yolo --commit
+
+# The official Kuba presets (11 curves + Neutro), built in
+auri presets
+auri write --preset harman             # dry-run
+auri write --preset harman --commit
+auri tui --preset harman
 
 # The interactive editor (no file = the neutral preset)
 auri tui
@@ -112,11 +125,15 @@ magnitude response drawn next to the band table.
 | `e` | toggle the engineering layer (unlocks HS/LP/HP) |
 | `n` | load the neutral preset |
 | `r` | restore the curve you started with |
+| `Tab` | focus the pre-write checklist |
+| `Space` | tick the focused confirmation |
 | `w` / `Enter` | arm, then write — twice, always |
 | `Esc` | cancel an armed write (or quit) |
 | `?` `q` | help / quit |
 
-Editing anything disarms a pending write; moving the cursor does not. `w` runs
+While the checklist has focus, `j`/`k` walk its rows and `Space` ticks them;
+the write stays locked until every required item is ticked. Editing anything
+disarms a pending write; moving the cursor does not. `w` runs
 the gate first: a refused curve never arms, and without `--commit` it stops at a
 dry-run report of the nine frames and their CRC. Nothing is ever retried.
 
@@ -167,14 +184,19 @@ Current status:
 - **M4** — the interactive editor: vim motions, a live re-evaluated verdict, a
   braille response plot built from the same quantised Q27 words the wire
   carries, and an arm-then-write flow that can never send unreviewed bytes.
+- **M5** — flash journal and the pre-write checklist: 2 s spacing, counters, a
+  loudness-jump warning, ticked confirmations, and the invariant that a journal
+  failure never re-sends a write.
+- **M6** — packaging: udev documentation, a tag-and-release workflow, and the
+  licensing correction (hidapi under BSD-3-Clause, binaries stay permissive).
 
 ## Licensing
 
-This repository is **MIT**. Two things to know before you ship a binary:
+This repository is **MIT**.
 
-- The **hidapi** library that `hidapi` links is GPL-3.0-or-later, which makes
-  the combined work a GPL work when distributed. Use `--dry-run` locally all
-  you like; if you redistribute, either comply with GPL or swap the `HidSink`
-  for a permissively licensed backend (the trait is already abstract).
+- **hidapi** is tri-licensed (GPL-3.0, BSD-3-Clause, or the original HIDAPI
+  license) and states that *"the license chosen is at the discretion of the
+  user"*. This project uses it under **BSD-3-Clause**, so distributed binaries
+  stay permissive. The notice and copyright are in `THIRD_PARTY_NOTICES.md`.
 - The protocol documentation and test oracles come from **open-auri**
   (AGPL-3.0) and are referenced, not copied.

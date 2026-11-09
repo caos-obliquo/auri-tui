@@ -381,31 +381,32 @@ import/export formats. None of that is needed for a preset list; open-auri's
 
 ---
 
-## 6. Active — M6: packaging and release
+## 6. Done — M6: packaging and release
 
-- [ ] **udev docs** — `packaging/99-kuba-auri.rules` and the README block
-  already work (user-verified on Arch). Add `docs/udev.md` covering
-  verification (`ls -l /dev/hidraw*`), the Chromium/WebHID failure mode, and
-  the fact that PipeWire/ALSA hold interface `mi_00` (audio) while the EQ lives
-  on `mi_03` (HID) — they never conflict.
-- [ ] **Static build** — `x86_64-unknown-linux-musl` target, or a documented
-  `cargo build --release` + `ldd` check. hidapi needs `libudev` on glibc; the
-  musl path needs a decision (static libudev vs. dynamic).
-- [ ] **`release.yml`** — model on `~/builds/youtui/.github/workflows/release.yml`
-  (version from `Cargo.toml`, tag check at HEAD, `GH_PAT`, GitHub release).
-  Consider `release-plz.toml` too — youtui has both.
-- [ ] **README status section** — add M5/M6 when they land.
-- [ ] **CHANGELOG.md** — youtui keeps one; this repo has none yet.
+- [x] **udev docs** — `docs/udev.md` covers installation, verification
+  (`ls -l /dev/hidraw*`, `auri devices`), the Chromium/WebHID failure mode, and
+  the `mi_00` audio / `mi_03` HID split (PipeWire/ALSA never conflict).
+- [x] **Static build** — documented glibc `cargo build --release` + `ldd`
+  baseline. `libudev` links dynamically even with `linux-static-hidraw`, so a
+  fully static musl binary needs a static eudev; deferred.
+- [x] **`release.yml`** — `.github/workflows/release.yml`, modeled on youtui:
+  version from `crates/auri-cli/Cargo.toml`, tag check at HEAD, `GH_PAT` with
+  a `github.token` fallback, GitHub release with the binary, LICENSE and
+  THIRD_PARTY_NOTICES, patch bump `[skip ci]`. `release-plz.toml` skipped for
+  minimalism.
+- [x] **README status section** — M5/M6 bullets added.
+- [x] **CHANGELOG.md** — Keep a Changelog 1.1.0 + SemVer, `[Unreleased]`.
 
 ---
 
 ## 7. Backlog / known gaps
 
 - **`just` not installed locally** — recipes exist, run `cargo` directly.
-- **Alternative to hidapi** — `hidapi` links GPL-3.0-or-later, which makes a
-  *distributed* binary a GPL work. The `HidSink` trait already abstracts it;
-  a permissive backend (e.g. `rusb`/`nusb`) is a drop-in for releases.
-  Decide before shipping binaries.
+- **hidapi licensing — resolved** — hidapi is tri-licensed (GPL-3.0,
+  BSD-3-Clause, or the original) and states that *"the license chosen is at the
+  discretion of the user"*. This project uses **BSD-3-Clause**, so distributed
+  binaries stay permissive; notice and copyright are in
+  `THIRD_PARTY_NOTICES.md`. The `HidSink` trait still allows swapping backends.
 - **Cable not plugged into this machine** — `auri devices` reports
   `no cable found (13058:8902)`. Real-hardware tests need the device.
 - **`App::neutral()` is `#[cfg(test)]`** — the binary always starts from a

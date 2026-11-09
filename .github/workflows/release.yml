@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT || github.token }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Read the crate version
+        id: version
+        run: |
+          current=$(awk -F'"' '/^version = /{print $2; exit}' crates/auri-cli/Cargo.toml)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Tag this commit if it is not tagged yet
+        env:
+          TAG: v${{ steps.version.outputs.current }}
+        run: |
+          if git tag --points-at HEAD | grep -q "^${TAG}$"; then
+            echo "HEAD is already tagged $TAG"
+          else
+            git tag -d "$TAG" 2>/dev/null || true
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+
+      - name: Build the release binary
+        run: cargo build --release --package auri-cli
+
+      - name: Compose the release notes
+        env:
+          TAG: v${{ steps.version.outputs.current }}
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          {
+            echo "## $TAG"
+            echo
+            echo "### Changes"
+            if [ -n "$PREV_TAG" ]; then
+              git log "$PREV_TAG..HEAD" --oneline --no-merges | sed 's/^/- /'
+              echo
+              echo "**Full Changelog:** https://github.com/${{ github.repository }}/compare/$PREV_TAG...$TAG"
+            else
+              git log --oneline --no-merges | sed 's/^/- /'
+            fi
+          } > release_body.md
+
+      - name: Publish the GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.current }}
+          name: v${{ steps.version.outputs.current }}
+          body_path: release_body.md
+          files: |
+            target/release/auri
+            LICENSE
+            THIRD_PARTY_NOTICES.md
+
+      - name: Bump the patch version
+        run: |
+          current=${{ steps.version.outputs.current }}
+          new=$(awk -F. '{print $1"."$2"."$3+1}' <<< "$current")
+          sed -i "0,/^version = \".*\"/s//version = \"$new\"/" crates/auri-cli/Cargo.toml
+          cargo metadata --format-version 1 > /dev/null
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/auri-cli/Cargo.toml Cargo.lock
+          git commit -m "chore: bump version to $new [skip ci]"
+          git pull --rebase origin main || true
+          git push origin main

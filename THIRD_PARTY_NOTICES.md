@@ -6,7 +6,7 @@ below; their *algorithms and published constants* are reimplemented in Rust.
 
 ## open-auri — AGPL-3.0
 
-<https://github.com/.../open-auri> (local checkout `~/builds/open-auri`)
+<https://github.com/marco-jardim/open-auri> (local checkout `~/builds/open-auri`)
 
 Protocol documentation (`docs/protocol-0xcb.md`), the byte layout of the
 payload (preamble, Q23 preamp, Q27 sections in `[b0, b2, -a1, b1, -a2]` order,
@@ -40,10 +40,15 @@ AutoEq's arithmetic order and its negated feedback-coefficient convention.
 Low-pass and high-pass design follow the Audio EQ Cookbook directly (AutoEq
 has no such filters).
 
-## hidapi — GPL-3.0-or-later / BSD-3-Clause
+## hidapi — BSD-3-Clause (chosen)
 
 <https://github.com/libusb/hidapi> — linked as a native library by the
-`hidapi` crate. The hidapi *library* is GPL-3.0-or-later; the `hidapi` Rust
-crate itself is MIT/GPL-3.0 dual-licensed. Linking it into an MIT binary makes
-the **combined work** subject to GPL-3.0-or-later when distributed. See
-`README.md` § Licensing before shipping binaries.
+`hidapi` Rust crate. HIDAPI is tri-licensed and states that *"the license
+chosen is at the discretion of the user of HIDAPI"*: GPL-3.0, BSD-3-Clause, or
+the original HIDAPI license. This project uses it under **BSD-3-Clause**, so
+distributed binaries stay permissive.
+
+Copyright (c) 2010, Alan Ott, Signal 11 Software. All rights reserved.
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the BSD-3-Clause conditions are met
+(the full text ships with the `hidapi` crate as `LICENSE-bsd.txt`).
