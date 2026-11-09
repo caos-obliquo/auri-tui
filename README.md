@@ -16,7 +16,7 @@ Independent implementation. **Not a fork** of
 | `auri-codec` | Byte-exact `0xCB` wire codec: RBJ/AutoEq biquads → Q23/Q27 words → CRC-16 → 9 reports |
 | `auri-gate` | Safety gate v2: the observed envelope of the 11 official presets, verdict before any write |
 | `auri-transport` | HID transport: real cable (`hidapi`), recording fake, dry-run writer |
-| `auri-cli` | The `auri` binary: `devices`, `show`, `write`, `neutral` |
+| `auri-cli` | The `auri` binary: `devices`, `show`, `write`, `neutral`, `tui` |
 
 ## Safety invariants
 
@@ -86,7 +86,35 @@ auri neutral --commit
 
 # Judge under the yolo profile: class-2 reasons are waived, hard ones never are
 auri write curve.json --yolo --commit
+
+# The interactive editor (no file = the neutral preset)
+auri tui
+auri tui curve.json --commit --yolo
 ```
+
+### The editor
+
+`auri tui` is a ratatui full-screen editor with a live gate verdict and the
+magnitude response drawn next to the band table.
+
+| Key | Action |
+|---|---|
+| `h` `j` `k` `l` / arrows | move between columns and bands |
+| `g` `G` | first / last band |
+| `+` `=` `-` | step the focused value |
+| `c` | cycle the band's filter kind |
+| `x` | switch the band off |
+| `t` | toggle the yolo profile |
+| `e` | toggle the engineering layer (unlocks HS/LP/HP) |
+| `n` | load the neutral preset |
+| `r` | restore the curve you started with |
+| `w` / `Enter` | arm, then write — twice, always |
+| `Esc` | cancel an armed write (or quit) |
+| `?` `q` | help / quit |
+
+Editing anything disarms a pending write; moving the cursor does not. `w` runs
+the gate first: a refused curve never arms, and without `--commit` it stops at a
+dry-run report of the nine frames and their CRC. Nothing is ever retried.
 
 The verdict is printed before the bytes, always:
 
@@ -132,6 +160,9 @@ Current status:
 - **M3** — `--commit` is gated: the CLI prints the verdict, refuses a refused
   curve with a non-zero exit, and only then opens the cable. `neutral` writes
   the −0.5 dB preamp the official Neutro preset uses (CRC `0x4fff`).
+- **M4** — the interactive editor: vim motions, a live re-evaluated verdict, a
+  braille response plot built from the same quantised Q27 words the wire
+  carries, and an arm-then-write flow that can never send unreviewed bytes.
 
 ## Licensing
 

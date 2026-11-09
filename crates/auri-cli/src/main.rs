@@ -5,6 +5,7 @@
 //! gate approves, because nothing reaches the cable without a gate.
 
 mod curve;
+mod tui;
 
 use std::process::ExitCode;
 
@@ -53,6 +54,18 @@ enum Command {
         #[arg(long)]
         yolo: bool,
     },
+    /// Interactive editor: vim motions, a live gate verdict, a real write.
+    Tui {
+        /// Curve to start from (defaults to the neutral preset).
+        file: Option<std::path::PathBuf>,
+        /// Send to the cable instead of dry-running. Still gated, still
+        /// needs an explicit `w` twice.
+        #[arg(long)]
+        commit: bool,
+        /// Judge under the yolo profile.
+        #[arg(long)]
+        yolo: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -95,6 +108,13 @@ fn run() -> Result<(), String> {
             send(&curve, commit, yolo)
         }
         Command::Neutral { commit, yolo } => send(&CurveFile::neutral(), commit, yolo),
+        Command::Tui { file, commit, yolo } => {
+            let curve = match file {
+                Some(path) => CurveFile::load(&path).map_err(|e| e.to_string())?,
+                None => CurveFile::neutral(),
+            };
+            tui::run(curve, commit, yolo)
+        }
     }
 }
 
