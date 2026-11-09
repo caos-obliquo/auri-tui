@@ -51,7 +51,8 @@ pub use gate::{
     gate_for_write, is_waivable,
 };
 pub use level::{
-    from_words, is_identity_section, quantized_preamp_db, section_db, section_db_from_terms,
+    from_words, is_identity_section, level_db, mean_frequencies, quantized_preamp_db,
+    quantized_section, section_db, section_db_from_terms,
 };
 pub use policy::{
     AUDIBLE_MAX_HZ, BOOST_Q_MAX, GAIN_MAX_DB, GAIN_MIN_DB, PK_BOOST_MAX_HZ, ULTRA_CUT_Q_MAX,

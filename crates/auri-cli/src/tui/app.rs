@@ -4,8 +4,15 @@
 //! unit-testable. [`crate::tui::mod`] maps real key events onto [`Key`] and
 //! performs the write [`Effect::Write`] asks for.
 
+use std::path::PathBuf;
+
 use auri_codec::{BAND_COUNT, Band, BandKind, NEUTRAL_BANDS};
 use auri_gate::{GAIN_MAX_DB, GAIN_MIN_DB, GateOptions, GateResult, Profile, gate_for_write};
+use auri_policy::{
+    ChecklistContext, ChecklistInput, ChecklistResult, Confirmations, FlashState, ItemId,
+    JournalStatus, LOCKED_TEXT, evaluate_checklist, flash_path, journal_path, journal_read,
+    last_status, last_written_level_db, load_flash, now_ms as policy_now_ms,
+};
 
 /// Smallest frequency the editor will step to, in Hz.
 const FREQ_MIN: f64 = 1.0;
@@ -42,6 +49,8 @@ pub enum Key {
     Enter,
     /// Escape.
     Esc,
+    /// Tab.
+    Tab,
     /// Anything else.
     Other,
 }
@@ -117,6 +126,27 @@ impl Col {
     }
 }
 
+/// Which pane owns `j`/`k` and `Space`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Focus {
+    /// The band table (the default).
+    Bands,
+    /// The pre-write checklist.
+    Checklist,
+}
+
+/// The session's injected world: clock and state files. Tests build one with
+/// fixed values, so nothing here touches the real clock or the real flash.
+#[derive(Debug, Clone)]
+pub struct SessionEnv {
+    /// Epoch ms the editor starts at.
+    pub now_ms: i64,
+    /// Where the flash counters live.
+    pub flash_path: PathBuf,
+    /// Where the write journal lives.
+    pub journal_path: PathBuf,
+}
+
 /// The editable state of the TUI.
 #[derive(Debug, Clone)]
 pub struct App {
@@ -142,17 +172,80 @@ pub struct App {
     pub status: String,
     /// The live verdict, recomputed after every edit.
     pub verdict: GateResult,
+    /// Which pane owns `j`/`k` and `Space`.
+    pub focus: Focus,
+    /// Cursor inside the checklist's confirmations.
+    pub confirm_row: usize,
+    /// The user's ticks.
+    pub confirmations: Confirmations,
+    /// Flash counters and the spacing anchor.
+    pub flash: FlashState,
+    /// `level_db` of the newest journaled write, if any.
+    pub last_written_level_db: Option<f64>,
+    /// Status of the newest journal entry, if any.
+    pub last_journal_status: Option<JournalStatus>,
+    /// The pre-write checklist, refreshed after every change.
+    pub checklist: ChecklistResult,
+    /// The injected clock, moved forward by [`App::tick`].
+    pub now_ms: i64,
+    /// What a write would go to (the runner updates it after opening a sink).
+    pub target: String,
+    /// The session's clock and state files.
+    pub env: SessionEnv,
 }
 
 impl App {
-    /// Builds the editor around a curve.
+    /// Builds the editor around a curve with the real clock and state files.
     #[must_use]
     pub fn new(bands: Vec<Band>, preamp_db: f64, yolo: bool) -> Self {
+        Self::with_env(
+            bands,
+            preamp_db,
+            yolo,
+            SessionEnv {
+                now_ms: policy_now_ms(),
+                flash_path: flash_path(),
+                journal_path: journal_path(),
+            },
+        )
+    }
+
+    /// Builds the editor around a curve and an injected session.
+    #[must_use]
+    pub fn with_env(bands: Vec<Band>, preamp_db: f64, yolo: bool, env: SessionEnv) -> Self {
         let profile = if yolo {
             Profile::Yolo
         } else {
             Profile::Standard
         };
+        let flash = load_flash(&env.flash_path, env.now_ms);
+        let (written_level, journal_status) = match journal_read(&env.journal_path) {
+            Ok(entries) => (last_written_level_db(&entries), last_status(&entries)),
+            // An unreadable journal is "no memory": conservative, never fatal.
+            Err(_) => (None, None),
+        };
+        let placeholder = GateResult {
+            ok: false,
+            reasons: Vec::new(),
+            waived: None,
+            waived_reasons: None,
+            profile: None,
+            metrics: Default::default(),
+        };
+        let input = ChecklistInput {
+            bands: &bands,
+            preamp_db,
+            profile,
+            experimental: false,
+            confirmations: Confirmations::default(),
+        };
+        let context = ChecklistContext {
+            flash: &flash,
+            now_ms: env.now_ms,
+            last_written_level_db: written_level,
+            last_journal_status: journal_status,
+        };
+        let checklist = evaluate_checklist(&input, &context, Some(&placeholder));
         let mut app = App {
             bands,
             original: Vec::new(),
@@ -164,14 +257,17 @@ impl App {
             armed: false,
             quit: false,
             status: String::new(),
-            verdict: GateResult {
-                ok: false,
-                reasons: Vec::new(),
-                waived: None,
-                waived_reasons: None,
-                profile: None,
-                metrics: Default::default(),
-            },
+            verdict: placeholder,
+            focus: Focus::Bands,
+            confirm_row: 0,
+            confirmations: Confirmations::default(),
+            flash,
+            last_written_level_db: written_level,
+            last_journal_status: journal_status,
+            checklist,
+            now_ms: env.now_ms,
+            target: "dry-run".to_string(),
+            env,
         };
         app.original = app.bands.clone();
         app.recompute();
@@ -186,16 +282,103 @@ impl App {
     #[cfg(test)]
     #[must_use]
     pub fn neutral(yolo: bool) -> Self {
-        App::new(NEUTRAL_BANDS.to_vec(), -0.5, yolo)
+        App::with_env(NEUTRAL_BANDS.to_vec(), -0.5, yolo, test_env(0))
     }
 
-    /// Re-judges the current curve with the current options.
+    /// Re-judges the current curve with the current options, then refreshes
+    /// the checklist from that same verdict (never a second gate).
     pub fn recompute(&mut self) {
         self.verdict = gate_for_write(
             &self.bands,
             self.preamp_db,
             GateOptions::for_write(self.experimental, self.profile),
         );
+        self.refresh_checklist();
+    }
+
+    /// Moves the injected clock forward: spacing, counters and the checklist
+    /// all follow it. The runner calls this every loop turn.
+    pub fn tick(&mut self, now_ms: i64) {
+        if now_ms != self.now_ms {
+            self.now_ms = now_ms;
+            self.refresh_checklist();
+        }
+    }
+
+    /// Re-evaluates the checklist from the current verdict, flash state and
+    /// ticks — one gate, one result, every screen.
+    pub fn refresh_checklist(&mut self) {
+        let result = {
+            let input = ChecklistInput {
+                bands: &self.bands,
+                preamp_db: self.preamp_db,
+                profile: self.profile,
+                experimental: self.experimental,
+                confirmations: self.confirmations,
+            };
+            let context = ChecklistContext {
+                flash: &self.flash,
+                now_ms: self.now_ms,
+                last_written_level_db: self.last_written_level_db,
+                last_journal_status: self.last_journal_status,
+            };
+            evaluate_checklist(&input, &context, Some(&self.verdict))
+        };
+        self.checklist = result;
+    }
+
+    /// The confirmations `Space` can tick: the required ones, in order.
+    #[must_use]
+    pub fn visible_confirmations(&self) -> Vec<ItemId> {
+        self.checklist
+            .items
+            .iter()
+            .filter(|item| {
+                item.required
+                    && matches!(
+                        item.id,
+                        ItemId::Volume
+                            | ItemId::Connection
+                            | ItemId::Experimental
+                            | ItemId::YoloSession
+                            | ItemId::YoloWrite
+                    )
+            })
+            .map(|item| item.id)
+            .collect()
+    }
+
+    /// Flips the confirmation under the checklist cursor. Unticking one that
+    /// `can_write` needs disarms a pending write immediately.
+    fn toggle_confirmation(&mut self) {
+        let visible = self.visible_confirmations();
+        if visible.is_empty() {
+            return;
+        }
+        let index = self.confirm_row.min(visible.len() - 1);
+        match visible[index] {
+            ItemId::Volume => {
+                self.confirmations.volume_lowered = !self.confirmations.volume_lowered;
+            }
+            ItemId::Connection => {
+                self.confirmations.keep_connected = !self.confirmations.keep_connected;
+            }
+            ItemId::Experimental => {
+                self.confirmations.experimental = !self.confirmations.experimental;
+            }
+            ItemId::YoloSession => {
+                self.confirmations.yolo_session = !self.confirmations.yolo_session;
+            }
+            ItemId::YoloWrite => {
+                self.confirmations.yolo_write = !self.confirmations.yolo_write;
+            }
+            ItemId::Gate | ItemId::Spacing => return,
+        }
+        self.refresh_checklist();
+        if self.armed && !self.checklist.can_write {
+            self.armed = false;
+            self.status = "disarmed: an item is missing".to_string();
+        }
     }
 
     /// Every edit invalidates an armed write: arming must be the last thing
@@ -221,6 +404,31 @@ impl App {
                     self.quit = true;
                     return Effect::Quit;
                 }
+                Effect::Nothing
+            }
+            Key::Tab => {
+                self.focus = match self.focus {
+                    Focus::Bands => Focus::Checklist,
+                    Focus::Checklist => Focus::Bands,
+                };
+                Effect::Nothing
+            }
+            Key::Char(' ') if self.focus == Focus::Checklist => {
+                self.toggle_confirmation();
+                Effect::Nothing
+            }
+            // In the checklist, j/k walk the confirmations instead.
+            Key::Char('j') | Key::Down if self.focus == Focus::Checklist => {
+                let len = self.visible_confirmations().len();
+                self.confirm_row = if len == 0 {
+                    0
+                } else {
+                    (self.confirm_row + 1).min(len - 1)
+                };
+                Effect::Nothing
+            }
+            Key::Char('k') | Key::Up if self.focus == Focus::Checklist => {
+                self.confirm_row = self.confirm_row.saturating_sub(1);
                 Effect::Nothing
             }
             // Vim motions: h/l walk the columns, j/k walk the bands.
@@ -310,6 +518,8 @@ impl App {
                         "gate refused {} reason(s) — nothing can be written",
                         self.verdict.reasons.len()
                     );
+                } else if !self.checklist.can_write {
+                    self.status = LOCKED_TEXT.to_string();
                 } else {
                     self.armed = true;
                     self.status = "armed: press w again to write, Esc to cancel".to_string();
@@ -317,9 +527,8 @@ impl App {
                 Effect::Nothing
             }
             Key::Char('?') => {
-                self.status =
-                    "hjkl move · +/- step · c kind · x off · t yolo · e layer · w write · q quit"
-                        .to_string();
+                self.status = "hjkl move · +/- step · c kind · x off · t yolo · e layer · Tab focus · Space tick · w write · q quit"
+                    .to_string();
                 Effect::Nothing
             }
             _ => Effect::Nothing,
@@ -481,12 +690,38 @@ pub fn retarget(band: Band, kind: BandKind) -> Band {
     }
 }
 
+/// A session that never touches the real clock or the real state files.
+#[cfg(test)]
+fn test_env(now_ms: i64) -> SessionEnv {
+    let stem = std::env::temp_dir().join(format!("auri-app-test-{}", std::process::id()));
+    SessionEnv {
+        now_ms,
+        flash_path: stem.with_extension("flash.json"),
+        journal_path: stem.with_extension("journal.jsonl"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn app() -> App {
         App::neutral(false)
+    }
+
+    /// Neutral, spaced-in, confirmations ticked: everything the checklist
+    /// demands is satisfied, so `w` arms.
+    fn ready(yolo: bool) -> App {
+        let mut app = App::with_env(NEUTRAL_BANDS.to_vec(), -0.5, yolo, test_env(0));
+        app.tick(2_000);
+        app.confirmations.volume_lowered = true;
+        app.confirmations.keep_connected = true;
+        if yolo {
+            app.confirmations.yolo_session = true;
+            app.confirmations.yolo_write = true;
+        }
+        app.refresh_checklist();
+        app
     }
 
     fn codes(app: &App) -> Vec<&'static str> {
@@ -584,7 +819,7 @@ mod tests {
 
     #[test]
     fn arming_needs_the_gate_and_sending_needs_a_second_press() {
-        let mut app = app();
+        let mut app = ready(false);
         assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
         assert!(app.armed);
         assert!(app.status.contains("armed"));
@@ -596,7 +831,7 @@ mod tests {
 
     #[test]
     fn esc_cancels_an_armed_write_before_it_quits() {
-        let mut app = app();
+        let mut app = ready(false);
         app.handle_key(Key::Char('w'));
         assert_eq!(app.handle_key(Key::Esc), Effect::Nothing);
         assert!(!app.armed);
@@ -605,7 +840,7 @@ mod tests {
 
     #[test]
     fn an_edit_disarms_but_a_cursor_move_does_not() {
-        let mut app = app();
+        let mut app = ready(false);
         app.handle_key(Key::Char('w'));
         assert!(app.armed);
 
@@ -721,7 +956,7 @@ mod tests {
             freq_hz: 1_000.0,
             q_factor: 0.707,
         };
-        let mut app = App::new(bands, -0.5, false);
+        let mut app = App::with_env(bands, -0.5, false, test_env(0));
         app.col = Col::Gain;
         app.handle_key(Key::Char('+'));
         assert_eq!(
@@ -793,5 +1028,78 @@ mod tests {
                 q_factor: 1.0
             }
         );
+    }
+
+    #[test]
+    fn arming_is_locked_until_the_checklist_is_complete() {
+        let mut app = app(); // unticked confirmations, spacing still running
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(!app.armed);
+        assert_eq!(app.status, LOCKED_TEXT);
+        assert!(!app.checklist.can_write);
+        assert!(
+            app.checklist
+                .item(ItemId::Volume)
+                .is_some_and(|item| !item.satisfied)
+        );
+    }
+
+    #[test]
+    fn tab_focuses_the_checklist_and_space_ticks_the_row() {
+        let mut app = App::with_env(NEUTRAL_BANDS.to_vec(), -0.5, false, test_env(0));
+        app.tick(2_000);
+        assert_eq!(app.focus, Focus::Bands);
+        app.handle_key(Key::Tab);
+        assert_eq!(app.focus, Focus::Checklist);
+
+        // j walks the confirmations, Space ticks the one under the cursor.
+        app.handle_key(Key::Char('j'));
+        assert_eq!(app.confirm_row, 1, "connection is second");
+        app.handle_key(Key::Char(' '));
+        assert!(app.confirmations.keep_connected);
+        app.handle_key(Key::Char('k'));
+        app.handle_key(Key::Char(' '));
+        assert!(app.confirmations.volume_lowered);
+        assert!(app.checklist.can_write, "spacing passed at tick(2000)");
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(app.armed);
+    }
+
+    #[test]
+    fn unticking_a_required_item_disarms_a_pending_write() {
+        let mut app = ready(false);
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(app.armed);
+        app.handle_key(Key::Tab);
+        app.handle_key(Key::Char(' ')); // volume is the first row
+        assert!(!app.confirmations.volume_lowered);
+        assert!(!app.armed, "an unticked item must clear the arm");
+        assert!(app.status.contains("disarmed"), "{}", app.status);
+    }
+
+    #[test]
+    fn yolo_writes_need_their_own_confirmations() {
+        let mut app = App::with_env(NEUTRAL_BANDS.to_vec(), -0.5, true, test_env(0));
+        app.tick(2_000);
+        app.confirmations.volume_lowered = true;
+        app.confirmations.keep_connected = true;
+        app.refresh_checklist();
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(!app.armed, "yolo-session and yolo-write are still unticked");
+        assert_eq!(app.status, LOCKED_TEXT);
+
+        app.handle_key(Key::Tab);
+        app.handle_key(Key::Char('j'));
+        app.handle_key(Key::Char('j')); // volume, connection → yolo-session
+        app.handle_key(Key::Char(' '));
+        app.handle_key(Key::Char('j'));
+        app.handle_key(Key::Char(' '));
+        assert!(
+            app.checklist.can_write,
+            "{:?}",
+            app.checklist.missing().collect::<Vec<_>>()
+        );
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(app.armed);
     }
 }

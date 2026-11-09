@@ -1,13 +1,14 @@
 //! What the terminal shows: header, band table, response plot, verdict, keys.
 
 use auri_gate::{GateResult, Profile};
+use auri_policy::{FLASH_NOTICE_TEXT, ItemId, LOCKED_TEXT, LOUDNESS_WARNING_TEXT, LoudnessReason};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph};
 
-use crate::tui::app::{App, Col};
+use crate::tui::app::{App, Col, Focus};
 use crate::tui::plot;
 
 /// The number of reason lines the verdict block can show before it truncates.
@@ -21,7 +22,7 @@ pub fn render(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(3),
             Constraint::Min(6),
-            Constraint::Length(7),
+            Constraint::Length(12),
             Constraint::Length(3),
         ])
         .split(area);
@@ -217,7 +218,7 @@ fn response(frame: &mut Frame, app: &App, area: Rect) {
 
 fn verdict(frame: &mut Frame, app: &App, area: Rect) {
     let result = &app.verdict;
-    let mut lines = Vec::with_capacity(MAX_REASON_LINES + 1);
+    let mut lines = Vec::with_capacity(MAX_REASON_LINES + 8);
 
     lines.push(status_line(result, app.profile));
 
@@ -252,7 +253,33 @@ fn verdict(frame: &mut Frame, app: &App, area: Rect) {
         }
     }
 
-    let block = Block::bordered().title(" gate ");
+    lines.push(level_line(app));
+    if app.checklist.loudness.warn {
+        lines.push(Line::from(Span::styled(
+            LOUDNESS_WARNING_TEXT,
+            Style::default().fg(Color::LightYellow),
+        )));
+    }
+    lines.push(confirmations_line(app));
+    if app.checklist.gate_ok && !app.checklist.can_write {
+        lines.push(Line::from(Span::styled(
+            format!("  {LOCKED_TEXT}"),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+    lines.push(counters_line(app));
+    if app.checklist.daily_notice {
+        lines.push(Line::from(Span::styled(
+            FLASH_NOTICE_TEXT,
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+
+    let mut block = Block::bordered().title(" gate ");
+    if app.focus == Focus::Checklist {
+        // Cyan, never yellow: the yellow background belongs to the table cursor.
+        block = block.border_style(Style::default().fg(Color::Cyan));
+    }
     frame.render_widget(Paragraph::new(lines).block(block), area);
 }
 
@@ -288,6 +315,123 @@ fn status_line(result: &GateResult, profile: Profile) -> Line<'static> {
                 Color::Red
             }),
         ),
+    ])
+}
+
+/// The predicted level of this curve, what the last write left behind and
+/// the jump between them. Computed data, not audio.
+fn level_line(app: &App) -> Line<'static> {
+    let checklist = &app.checklist;
+    let level = checklist
+        .new_level_db
+        .map_or_else(|| "—".to_string(), |value| format!("{value:+.2} dB"));
+    let last = checklist
+        .last_written_level_db
+        .map_or_else(|| "—".to_string(), |value| format!("{value:+.2} dB"));
+    let jump = checklist
+        .loudness
+        .delta_db
+        .map_or_else(|| "—".to_string(), |value| format!("{value:+.2} dB"));
+    let jump_colour = if checklist.loudness.reasons.contains(&LoudnessReason::Jump) {
+        Color::LightYellow
+    } else {
+        Color::DarkGray
+    };
+
+    Line::from(vec![
+        Span::styled(
+            "  level 300 Hz–3 kHz ",
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(
+            level,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("   last written ", Style::default().fg(Color::DarkGray)),
+        Span::styled(last, Style::default().fg(Color::DarkGray)),
+        Span::styled("   jump ", Style::default().fg(Color::DarkGray)),
+        Span::styled(jump, Style::default().fg(jump_colour)),
+    ])
+}
+
+/// The tickable confirmations on one line: `[x]` when satisfied, reversed on
+/// the row the checklist cursor holds.
+fn confirmations_line(app: &App) -> Line<'static> {
+    let visible = app.visible_confirmations();
+    let mut spans = vec![Span::styled("  ", Style::default())];
+    if visible.is_empty() {
+        spans.push(Span::styled(
+            "nothing to confirm",
+            Style::default().fg(Color::DarkGray),
+        ));
+    }
+    for (index, id) in visible.iter().enumerate() {
+        if index > 0 {
+            spans.push(Span::styled("   ", Style::default()));
+        }
+        let checked = app.checklist.item(*id).is_some_and(|item| item.satisfied);
+        let mut style = Style::default().fg(if checked {
+            Color::Green
+        } else {
+            Color::DarkGray
+        });
+        if app.focus == Focus::Checklist && index == app.confirm_row {
+            style = style.add_modifier(Modifier::REVERSED);
+        }
+        spans.push(Span::styled(
+            format!(
+                "{} {}",
+                if checked { "[x]" } else { "[ ]" },
+                confirm_label(*id)
+            ),
+            style,
+        ));
+    }
+    Line::from(spans)
+}
+
+const fn confirm_label(id: ItemId) -> &'static str {
+    match id {
+        ItemId::Volume => "volume lowered",
+        ItemId::Connection => "keep connected",
+        ItemId::Experimental => "experimental",
+        ItemId::YoloSession => "yolo session",
+        ItemId::YoloWrite => "yolo write",
+        ItemId::Gate | ItemId::Spacing => "",
+    }
+}
+
+/// Flash counters, the 2 s spacing and where the next write would go.
+fn counters_line(app: &App) -> Line<'static> {
+    let counters = app.checklist.counters;
+    let spacing = app.checklist.spacing;
+    let wait = if spacing.ok {
+        "ready".to_string()
+    } else {
+        format!("{:.1}s", spacing.wait_ms as f64 / 1000.0)
+    };
+
+    Line::from(vec![
+        Span::styled(
+            format!(
+                "  {} this session · {} today · {} in total",
+                counters.session, counters.day, counters.total
+            ),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled("   spacing ", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            wait,
+            Style::default().fg(if spacing.ok {
+                Color::Green
+            } else {
+                Color::Yellow
+            }),
+        ),
+        Span::styled("   to ", Style::default().fg(Color::DarkGray)),
+        Span::styled(app.target.clone(), Style::default().fg(Color::Cyan)),
     ])
 }
 
@@ -343,6 +487,16 @@ mod tests {
         out
     }
 
+    /// Neutral, spaced-in, confirmations ticked: `w` arms.
+    fn ready() -> App {
+        let mut app = App::neutral(false);
+        app.tick(2_000);
+        app.confirmations.volume_lowered = true;
+        app.confirmations.keep_connected = true;
+        app.refresh_checklist();
+        app
+    }
+
     #[test]
     fn a_frame_renders_the_header_table_plot_and_keys() {
         let text = screen(&App::neutral(false));
@@ -369,13 +523,29 @@ mod tests {
 
     #[test]
     fn arming_shows_up_and_cancelling_clears_it() {
-        let mut app = App::neutral(false);
+        let mut app = ready();
         app.handle_key(Key::Char('w'));
         let armed = screen(&app);
         assert!(armed.contains("ARMED"), "{armed}");
 
         app.handle_key(Key::Esc);
         assert!(!screen(&app).contains("ARMED"));
+    }
+
+    #[test]
+    fn the_checklist_shows_levels_confirmations_and_counters() {
+        let text = screen(&App::neutral(false));
+        assert!(text.contains("level"), "level line: {text}");
+        assert!(text.contains("volume lowered"), "confirmations: {text}");
+        assert!(text.contains("this session"), "counters: {text}");
+        assert!(text.contains("spacing"), "spacing: {text}");
+        assert!(text.contains("Complete every item"), "lock message: {text}");
+
+        let mut app = ready();
+        app.handle_key(Key::Tab);
+        let focused = screen(&app);
+        assert!(focused.contains("[x]"), "ticked items: {focused}");
+        assert!(!focused.contains("Complete every item"), "{focused}");
     }
 
     /// Every character cell that carries the cursor background.

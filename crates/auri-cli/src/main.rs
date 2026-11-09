@@ -9,7 +9,13 @@ mod tui;
 
 use std::process::ExitCode;
 
-use auri_gate::{GateOptions, GateResult, Profile, Reason, ReasonValue, gate_for_write};
+use auri_gate::{GateOptions, GateResult, Profile, Reason, ReasonValue, gate_for_write, level_db};
+use auri_policy::{
+    FLASH_NOTICE_TEXT, JournalEntry, JournalStatus, LOUDNESS_WARNING_TEXT, LoudnessInput,
+    can_write_now, counters, daily_notice, flash_path, journal_append, journal_path, journal_read,
+    last_status, last_written_level_db, load_flash, loudness_warning, now_ms, record_write,
+    save_flash,
+};
 use auri_transport::{CurveWriter, HidSink, RealHid};
 use clap::{Parser, Subcommand};
 
@@ -148,15 +154,114 @@ fn send(curve: &CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
         return refused(&verdict);
     }
 
+    // The flash counters: an unknown anchor means the full wait, never
+    // "no cooldown", and a commit never races it.
+    let now = now_ms();
+    let flash_path = flash_path();
+    let mut flash = load_flash(&flash_path, now);
+    let spacing = can_write_now(&flash, now);
+    if !spacing.ok {
+        return Err(format!(
+            "flash spacing: wait {} ms before the next write (nothing was written)",
+            spacing.wait_ms
+        ));
+    }
+
+    // The journal's memory of the last write. Unreadable ⇒ no history, which
+    // is the conservative answer for every question asked below.
+    let journal_path = journal_path();
+    let entries = match journal_read(&journal_path) {
+        Ok(entries) => entries,
+        Err(error) => {
+            eprintln!("auri: journal unreadable ({error}); assuming no history");
+            Vec::new()
+        }
+    };
+    let last_level = last_written_level_db(&entries);
+    let last_status = last_status(&entries);
+
+    let level = level_db(&curve.eq_bands, curve.preamp_db)
+        .ok()
+        .filter(|value| value.is_finite());
+    let loudness = loudness_warning(LoudnessInput {
+        new_level_db: level,
+        last_written_level_db: last_level,
+        // This process has not written yet: first write of the session is
+        // unknown state until the journal says otherwise.
+        session_write_count: flash.session,
+        last_journal_status: last_status,
+    });
+
     let mut writer = CurveWriter::new(RealHid::open().map_err(|e| e.to_string())?);
-    println!("writing to {} ...", writer.sink().label());
-    writer
-        .write_curve(&reports, true)
-        .map_err(|e| e.to_string())?;
+    let label = writer.sink().label().to_string();
+    println!("writing to {label} ...");
+    let outcome = writer.write_curve(&reports, true);
+    let stamped = now_ms();
+
+    // Counters first: a commit attempt consumes the spacing even when the
+    // transport failed, so nothing can race the flash.
+    match record_write(&flash, stamped) {
+        Ok(next) => flash = next,
+        // An unusable clock loses the counters, never the spacing anchor.
+        Err(_) => flash.last_write_at = Some(stamped),
+    }
+    if let Err(error) = save_flash(&flash_path, &flash) {
+        eprintln!("auri: flash counters not saved ({error})");
+    }
+
+    // Exactly one journal entry, after the transport settles. A failure here
+    // warns — it never re-sends a write that already happened.
+    let entry = JournalEntry {
+        ts: stamped,
+        status: if outcome.is_ok() {
+            JournalStatus::Ok
+        } else {
+            JournalStatus::Interrupted
+        },
+        crc: verdict
+            .metrics
+            .payload_crc
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string()),
+        bands: curve.eq_bands.clone(),
+        preamp_db: curve.preamp_db,
+        profile: if yolo {
+            Profile::Yolo
+        } else {
+            Profile::Standard
+        },
+        label,
+    };
+    if let Err(error) = journal_append(&journal_path, &entry) {
+        eprintln!("auri: journal not appended ({error}); nothing is re-sent");
+    }
+
+    outcome.map_err(|e| e.to_string())?;
+
+    let crc = verdict.metrics.payload_crc.as_deref().unwrap_or("unknown");
+    println!("written to the cable. CRC {crc}");
+    if let Some(level) = level {
+        println!("predicted level 300 Hz–3 kHz: {level:+.2} dB");
+    }
+    match last_level {
+        Some(last) => println!("last written curve: {last:+.2} dB"),
+        None => println!("last written curve: unknown"),
+    }
+    if let Some(delta) = loudness.delta_db {
+        println!("jump: {delta:+.2} dB");
+    }
+    if loudness.warn {
+        println!("{LOUDNESS_WARNING_TEXT}");
+    }
+    let counters = counters(&flash, stamped);
     println!(
-        "written to the cable. CRC {}",
-        verdict.metrics.payload_crc.as_deref().unwrap_or("unknown")
+        "flash counters: {} this session · {} today · {} in total",
+        counters.session, counters.day, counters.total
     );
+    println!("2 s spacing between writes respected (next write in 2.0 s)");
+    if daily_notice(&flash, stamped) {
+        println!("{FLASH_NOTICE_TEXT}");
+    }
     Ok(())
 }
 

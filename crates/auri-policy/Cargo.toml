@@ -1,0 +1,22 @@
+[package]
+name = "auri-policy"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Pre-write policy for the Kuba Auri: flash spacing and counters, write journal, checklist"
+keywords = ["audio", "eq", "safety", "hid", "flash"]
+categories = ["audio", "hardware-support"]
+
+[dependencies]
+auri-codec = { path = "../auri-codec" }
+auri-gate = { path = "../auri-gate" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

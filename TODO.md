@@ -27,9 +27,17 @@ crates/auri-gate       safety gate v2 — verdict before any write
   src/policy.rs        kinds by layer, ultrasonic, boost limits, policy_reasons
   src/section.rs       pole radius, stationary frequencies, section peaks, refine
   src/scan.rs          scan_grid + CascadeScan (no cache; ~0.8 ms)
-  src/level.rs         from_words, section_db, quantized_preamp_db  ← level_db MISSING (M5.2)
+  src/level.rs         from_words, section_db, quantized_preamp_db, level_db (M5.2)
   src/gate.rs          gate(), gate_for_write(), GateMetrics, GateResult
   tests/parity.rs      336 generated verdicts vs the JS oracle
+  tests/level_parity.rs  level_db vs the JS oracle, 14 cases (M5.2)
+
+crates/auri-policy    pre-write policy (M5)
+  src/flash.rs         2 s spacing, counters, local date, ~/.local/share/auri/flash.json
+  src/loudness.rs      +3 dB jump / unknown-state warning (advisory only)
+  src/journal.rs       append-only JSONL journal, last written level
+  src/checklist.rs     lamps a–g+k, criteria, confirmations, evaluate_checklist
+  src/store.rs         private (0600) XDG file helpers
 
 crates/auri-transport  HID transport
   src/real.rs          RealHid::open()/list() via hidapi
@@ -43,12 +51,13 @@ crates/auri-cli        the `auri` binary
   src/tui/{app,ui,plot,mod}.rs   ratatui editor (vim h/j/k/l)
 
 tools/gen-gate-verdicts.mjs   regenerates the gate parity corpus from the JS oracle
+tools/gen-levels.mjs          regenerates the level_db parity corpus (M5.2)
 ```
 
 ### Running things
 
 ```sh
-cargo test --workspace                 # 75 tests
+cargo test --workspace                 # 124 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all                        # stable: warns about nightly-only options
 node tools/gen-gate-verdicts.mjs       # needs a sibling open-auri checkout
@@ -147,7 +156,7 @@ Test count: **75**. Clippy `-D warnings`: clean.
 
 ---
 
-## 5. Active — M5: flash journal + the "Before writing" checklist
+## 5. Done — M5: flash journal + the "Before writing" checklist
 
 > **Licensing note.** The reference implementation is open-auri
 > (AGPL-3.0). Reading it to derive behaviour is fine and already how every
@@ -306,26 +315,27 @@ Rules:
 - warn when `loudness.warn`
 - print the daily notice at ≥50 writes
 
-**TUI (`tui/ui.rs` + `tui/app.rs`)** — a checklist panel:
+**TUI (`tui/ui.rs` + `tui/app.rs`)** — shipped **minimal** (user decision:
+no bloat, more minimal than open-auri): no VU meter, no lamp grid, no
+criteria table. The gate block gained four compact lines instead:
 
-- VU meter labelled **`PREDICTED LEVEL · NOT AUDIO`**, scale −20 … +3 dB, with
-  the `level_db` value and the CRC. Make it unmistakable that this is computed
-  data, not audio.
-- The 8 lamps with their criterion values, green/amber/red/grey.
-- Volume block: predicted level, last written curve, jump, and the warning
-  sentence (re-authored) when the lamp lights. The lamp lights from **+3 dB**
-  or when the cable's state is unknown.
-- Confirmations: volume lowered + will not disconnect (+ experimental, when
-  required) — all must be ticked before Write enables. Show
-  `Complete every item to enable writing.` while locked.
-- Counters: `this session` / `today` / `in total`, plus the 2 s spacing status.
-- Target: `Write to: {label}`.
-- Arm state: `Armed`, then success `Written to the cable. CRC {crc}.`
+- Level line: `level 300 Hz–3 kHz · last written · jump` — computed data.
+- Warning sentence (re-authored) when `loudness.warn` (+3 dB jump or
+  unknown state).
+- Confirmations on one line: `[x] volume lowered  [x] keep connected`
+  (+ experimental when required, + the two YOLO items under Yolo) — all must
+  be ticked before Write enables. Show `Complete every item to enable
+  writing.` while locked.
+- Counters line: `this session / today / in total`, 2 s spacing status and
+  `to {target}` (dry-run or the sink label).
 - Flash notice once the daily threshold is hit.
+- Arm state: `ARMED`, then success `written to the cable. CRC {crc}.`
+- Focus: `Tab` moves between the band table and the checklist (border turns
+  cyan — never yellow, that belongs to the table cursor), `Space` toggles the
+  focused confirmation, `j`/`k` walk the confirmations while focused.
 
-Keyboard: keep it vim. Suggested additions — `Space` toggles the focused
-confirmation, `Tab` moves between the checklist and the band table, `w` stays
-the write gesture.
+Keyboard: keep it vim. `w` stays the write gesture (arms only when the
+checklist allows, else the lock message).
 
 ### M5.6 — tests
 
@@ -341,6 +351,8 @@ the write gesture.
 - Journal: append → read back → `last_written_level_db` skips non-Ok.
 - **Invariant test:** a journal write failure does not produce a second
   transport write.
+
+All of the above land with M5: 124 tests green, clippy `-D warnings` clean.
 
 ---
 
