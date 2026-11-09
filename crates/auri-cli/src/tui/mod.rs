@@ -19,7 +19,7 @@ use auri_policy::{
 };
 use auri_transport::{CurveWriter, HidSink, RealHid};
 use ratatui::DefaultTerminal;
-use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use ratatui::crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::curve::CurveFile;
 
@@ -36,7 +36,16 @@ const TICK: Duration = Duration::from_millis(200);
 pub fn run(curve: CurveFile, commit: bool, yolo: bool) -> Result<(), String> {
     let mut app = App::new(curve.eq_bands, curve.preamp_db, yolo);
     app.target = if commit { "the cable" } else { "dry-run" }.to_string();
-    let mut terminal = ratatui::init();
+    // try_init, never init: a missing or unusable TTY must be an error the
+    // caller prints, not a panic — and a half-applied raw mode still gets
+    // undone before we return.
+    let mut terminal = match ratatui::try_init() {
+        Ok(terminal) => terminal,
+        Err(error) => {
+            ratatui::restore();
+            return Err(format!("cannot open the terminal: {error}"));
+        }
+    };
     let outcome = event_loop(&mut terminal, &mut app, commit);
     ratatui::restore();
     outcome
@@ -71,7 +80,22 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App, commit: bool) -> Re
 }
 
 /// Maps a terminal key onto the editor's small, testable alphabet.
+///
+/// Ctrl/Alt chords never reach the bindings: in raw mode Ctrl+C arrives as
+/// a key event, and a stray Ctrl+W must not arm — let alone write — a curve.
+/// Ctrl+C quits (quitting never writes); every other chord is ignored.
 fn decode(raw: KeyEvent) -> Key {
+    if raw
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+    {
+        return match (raw.modifiers, raw.code) {
+            (modifiers, KeyCode::Char('c')) if modifiers.contains(KeyModifiers::CONTROL) => {
+                Key::Char('q')
+            }
+            _ => Key::Other,
+        };
+    }
     match raw.code {
         KeyCode::Char(character) => Key::Char(character),
         KeyCode::Up => Key::Up,
@@ -246,6 +270,52 @@ mod tests {
         assert_eq!(decode(key(KeyCode::Home)), Key::Other);
         assert_eq!(decode(key(KeyCode::F(5))), Key::Other);
         assert_eq!(decode(key(KeyCode::BackTab)), Key::Other);
+        // SHIFT is not a chord: uppercase letters keep working.
+        assert_eq!(
+            decode(KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT)),
+            Key::Char('G')
+        );
+    }
+
+    #[test]
+    fn chords_never_reach_the_bindings() {
+        // In raw mode Ctrl+C/W arrive as key events: they must not cycle a
+        // column, arm, or write — Ctrl+C quits (quitting never writes).
+        let ctrl_w = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
+        assert_eq!(decode(ctrl_w), Key::Other);
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert_eq!(decode(ctrl_c), Key::Char('q'));
+        let alt_x = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::ALT);
+        assert_eq!(decode(alt_x), Key::Other);
+        let ctrl_enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::CONTROL);
+        assert_eq!(decode(ctrl_enter), Key::Other);
+
+        let mut app = ready();
+        assert_eq!(app.handle_key(decode(ctrl_w)), Effect::Nothing);
+        assert!(!app.armed, "a chord must never arm a write");
+        assert_eq!(app.handle_key(decode(ctrl_c)), Effect::Quit);
+    }
+
+    #[test]
+    fn opening_the_editor_creates_no_state_files() {
+        let dir = std::env::temp_dir().join(format!("auri-startup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let env = app::SessionEnv {
+            now_ms: 0,
+            flash_path: dir.join("flash.json"),
+            journal_path: dir.join("journal.jsonl"),
+        };
+
+        let app = App::with_env(auri_codec::NEUTRAL_BANDS.to_vec(), -0.5, false, env);
+
+        assert_eq!(app.status, "ready");
+        assert_eq!(
+            std::fs::read_dir(&dir).expect("temp dir").count(),
+            0,
+            "startup is read-only: it must not create flash or journal files"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
