@@ -4,11 +4,11 @@ Concise entry point for a fresh session. The full milestone spec and history
 live in `TODO.md`; this file is the map, the invariants, and the current state.
 
 **Status (2026-11-09):** M0–M6 done, official presets done, panic hardening
-done (143 tests green), `show --preset`, TUI `{`/`}` preset cycling with
-`[RO]`, and `auri export` (apo/pipewire) done. Branch
-`chore/m6-packaging` at `09cd93a` (+ this doc). Workspace: 143 tests green,
-`cargo clippy --workspace --all-targets -- -D warnings` clean, `cargo fmt`
-applied. Nothing pushed.
+done, `show --preset`, TUI `{`/`}` preset cycling with `[RO]`, `auri export`
+(apo/pipewire) done, and the flash-spacing deadlock fixed (see below). On
+`main` at `003db88`; `chore/m6-packaging` merged and deleted. Workspace: 143
+tests green, `cargo clippy --workspace --all-targets -- -D warnings` clean,
+`cargo fmt` applied. `v0.1.1` released (contains the fix).
 
 ## What this is
 
@@ -89,14 +89,19 @@ The cable is not plugged in on this machine: `auri devices` reports
   draw a braille magnitude curve (`tui/plot.rs`).
 - **AutoEq**: biquad math source (MIT).
 
+## The flash-spacing deadlock (fixed, `003db88`)
+
+A refused `--commit` returned before `save_flash`, so the anchored
+`last_write_at` never reached disk. Every fresh invocation re-anchored `None`
+to its own start time and the first-ever commit was blocked by
+`flash spacing: wait 2000 ms` forever. `send()` now persists the anchor before
+`can_write_now` — only the timestamp, no counter moves, nothing re-sent. A
+missing cable is no longer a hidden test dependency: the missing-cable test
+drives a failing sink instead of the real device.
+
 ## Next steps (not started)
 
-1. Reconcile local `main` with `origin/main`: origin has the squashed
-   `10559ae`, local has the split history plus presets (ahead 3 / behind 1).
-   Merge or force-push-with-lease — ask the user.
-2. Push `chore/m6-packaging` after approval; the release workflow runs on
-   `main` only.
-3. Optional: fully static musl build — blocked on static eudev/libudev.
-4. Hardware validation when the cable is available: `auri devices`, dry-run,
-   then one gated `--commit` write.
-5. Backlog and open questions: `TODO.md` §7.
+1. Optional: fully static musl build — blocked on static eudev/libudev.
+2. Backlog and open questions: `TODO.md` §7.
+3. A simpler pipemixer-style TUI has been requested (one list, vim motions);
+   no plan yet.

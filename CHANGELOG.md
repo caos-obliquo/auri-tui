@@ -34,6 +34,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Ctrl/Alt chords can never arm or write a curve; Ctrl+C quits.
 - A closed stdout (`auri presets | head -1`) no longer panics on EPIPE; the
   `out`/`err` helpers buffer and ignore write errors.
+- The first-ever `--commit` could never succeed: a refused write returned
+  before `save_flash`, so the spacing anchor was never persisted and every
+  fresh invocation re-anchored it to its own start time. The anchor is now
+  written before the spacing check — only the timestamp, no counter moves,
+  nothing re-sent.
 
 ### Security
 

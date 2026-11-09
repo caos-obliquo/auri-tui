@@ -407,8 +407,11 @@ shipped `auri export --format apo|pipewire` (numbers only, host spellings).
   discretion of the user"*. This project uses **BSD-3-Clause**, so distributed
   binaries stay permissive; notice and copyright are in
   `THIRD_PARTY_NOTICES.md`. The `HidSink` trait still allows swapping backends.
-- **Cable not plugged into this machine** — `auri devices` reports
-  `no cable found (13058:8902)`. Real-hardware tests need the device.
+- **Hardware validated (2026-11-09)** — the cable is plugged in and a gated
+  `--commit` write of Neutro landed (`written to the cable. CRC 0x4fff`,
+  counters 1/1/1, journal `status:"ok"`). The flash-spacing deadlock that
+  blocked the first-ever commit is fixed in `main` (`003db88`) and shipped in
+  `v0.1.1`.
 - **`App::neutral()` is `#[cfg(test)]`** — the binary always starts from a
   `CurveFile`.
 - **Grid cache** — `CascadeScan` rebuilds the log grid every call (~0.8 ms).

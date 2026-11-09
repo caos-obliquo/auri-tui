@@ -192,6 +192,10 @@ Current status:
   failure never re-sends a write.
 - **M6** — packaging: udev documentation, a tag-and-release workflow, and the
   licensing correction (hidapi under BSD-3-Clause, binaries stay permissive).
+- **Post-release fix** — the flash-spacing anchor is now persisted before the
+  spacing check, so the first-ever `--commit` can succeed (it previously
+  deadlocked on `wait 2000 ms`). Validated on the real cable: `written to the
+  cable. CRC 0x4fff`, counters 1/1/1.
 
 ## Licensing
 
