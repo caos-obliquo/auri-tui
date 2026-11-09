@@ -63,7 +63,7 @@ pub fn level_db(bands: &[Band], preamp_db: f64) -> Result<f64, auri_codec::Codec
         }
         total += sum;
     }
-    Ok(preamp + total / f64::from(u32::try_from(frequencies.len()).expect("93 fits in u32")))
+    Ok(preamp + total / f64::from(frequencies.len() as u32))
 }
 
 /// Section coefficients as the chip sees them, from the 5 wire words

@@ -115,7 +115,8 @@ pub fn policy_reasons(bands: &[Band], experimental: bool) -> Vec<crate::reason::
     let mut d7: Vec<Reason> = Vec::new();
 
     for (index, band) in bands.iter().enumerate() {
-        let stage = u32::try_from(index + 1).expect("stage fits in u32");
+        // Index is 0..BAND_COUNT; 1..=10 always fits in u32.
+        let stage = index as u32 + 1;
         let kind = band.kind();
 
         if !is_kind_allowed(kind, layer) {

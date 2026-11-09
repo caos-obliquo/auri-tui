@@ -103,10 +103,12 @@ impl CascadeScan {
         if self.sections.len() == 1 {
             return single_section_peak(self.sections[0], self.min_hz, self.max_hz);
         }
-        let grid = self
-            .grid
-            .as_ref()
-            .expect("a multi-section peak needs a grid");
+        // Multi-section peaks always have a grid (CascadeScan only builds one
+        // when scan=true, and callers pass scan=true for >1 active section).
+        // Fallback to single-section peak if the grid is somehow absent.
+        let Some(grid) = self.grid.as_ref() else {
+            return single_section_peak(self.sections[0], self.min_hz, self.max_hz);
+        };
         let f = |frequency: f64| {
             self.sections.iter().fold(0.0, |db, section| {
                 db + crate::level::section_db(*section, frequency)

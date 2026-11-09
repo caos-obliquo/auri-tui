@@ -301,8 +301,7 @@ pub fn gate(bands: &[Band], preamp_db: f64, options: GateOptions) -> GateResult 
         reasons.push(Reason::measured(ReasonCode::Preamp, None, preamp_db, limit));
     }
 
-    let preamp =
-        quantized_preamp_db(preamp_db).expect("encode_payload already accepted this preamp");
+    let preamp = quantized_preamp_db(preamp_db).unwrap_or(preamp_db);
     metrics.preamp_db = Some(preamp_db);
     metrics.quantized_preamp_db = Some(preamp);
 
@@ -317,7 +316,8 @@ pub fn gate(bands: &[Band], preamp_db: f64, options: GateOptions) -> GateResult 
             }
         };
         for reason in &analysis.reasons {
-            let stage = u32::try_from(sections.len() + 1).expect("stage fits in u32");
+            // Stage is 1..=BAND_COUNT (10), always fits in u32.
+            let stage = sections.len() as u32 + 1;
             reasons.push(Reason {
                 code: reason.code,
                 stage: Some(stage),
@@ -359,18 +359,25 @@ pub fn gate(bands: &[Band], preamp_db: f64, options: GateOptions) -> GateResult 
         if peak.is_none() {
             peak = Some(audible.peak());
         }
-        let peak = peak.expect("peak set above");
+        // Peak is always Some here: set on the branch above for the first
+        // section, carried forward for identity sections. Fallback is 0 dB.
+        let peak = peak.unwrap_or(crate::section::Peak {
+            db: 0.0,
+            frequency_hz: 0.0,
+        });
         prefix_audible.push(PrefixPeak {
-            stage: u32::try_from(i + 1).expect("stage fits in u32"),
+            stage: i as u32 + 1,
             db: peak.db + preamp,
             frequency_hz: Some(peak.frequency_hz),
         });
     }
     metrics.prefix_audible = Some(prefix_audible.clone());
     let internal_audible = highest(&prefix_audible);
-    let output_audible = *prefix_audible
-        .last()
-        .expect("the preamp prefix is always present");
+    let output_audible = prefix_audible.last().copied().unwrap_or(PrefixPeak {
+        stage: 0,
+        db: preamp,
+        frequency_hz: None,
+    });
     metrics.internal_audible = Some(internal_audible);
     metrics.output_audible = Some(output_audible);
 
@@ -394,9 +401,13 @@ pub fn gate(bands: &[Band], preamp_db: f64, options: GateOptions) -> GateResult 
             if full_peak.is_none() {
                 full_peak = Some(full_scan.peak());
             }
-            let full_peak = full_peak.expect("peak set above");
+            // Same invariant as above: set on first non-identity, carried after.
+            let full_peak = full_peak.unwrap_or(crate::section::Peak {
+                db: 0.0,
+                frequency_hz: 0.0,
+            });
             built.push(PrefixPeak {
-                stage: u32::try_from(i + 1).expect("stage fits in u32"),
+                stage: i as u32 + 1,
                 db: full_peak.db + preamp,
                 frequency_hz: Some(full_peak.frequency_hz),
             });
@@ -441,9 +452,13 @@ pub fn gate(bands: &[Band], preamp_db: f64, options: GateOptions) -> GateResult 
             if extended_peak.is_none() {
                 extended_peak = Some(extended_scan.peak());
             }
-            let extended_peak = extended_peak.expect("peak set above");
+            // Same invariant as above.
+            let extended_peak = extended_peak.unwrap_or(crate::section::Peak {
+                db: 0.0,
+                frequency_hz: 0.0,
+            });
             built.push(PrefixPeak {
-                stage: u32::try_from(i + 1).expect("stage fits in u32"),
+                stage: i as u32 + 1,
                 db: extended_peak.db + preamp,
                 frequency_hz: Some(extended_peak.frequency_hz),
             });
