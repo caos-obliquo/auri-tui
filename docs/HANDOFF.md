@@ -3,8 +3,10 @@
 Concise entry point for a fresh session. The full milestone spec and history
 live in `TODO.md`; this file is the map, the invariants, and the current state.
 
-**Status (2026-11-09):** M0–M6 done, official presets done. Branch
-`chore/m6-packaging` at `331c078` (+ this doc). Workspace: 130 tests green,
+**Status (2026-11-09):** M0–M6 done, official presets done, panic hardening
+done (143 tests green), `show --preset`, TUI `{`/`}` preset cycling with
+`[RO]`, and `auri export` (apo/pipewire) done. Branch
+`chore/m6-packaging` at `09cd93a` (+ this doc). Workspace: 143 tests green,
 `cargo clippy --workspace --all-targets -- -D warnings` clean, `cargo fmt`
 applied. Nothing pushed.
 
@@ -79,11 +81,10 @@ The cable is not plugged in on this machine: `auri devices` reports
   reference for protocol, gate thresholds, presets, `level_db`. Never copy
   code or prose; reimplement and cite in `THIRD_PARTY_NOTICES.md`.
 - **eqtui** (`github.com/SiputBiru/eqtui`, GPL-2.0): closest Rust + Ratatui EQ
-  TUI. Worth borrowing: `{`/`}` profile cycling (our deferred preset
-  cycling), a read-only `[RO]` marker for built-in presets, right-panel
-  response graph. Not applicable: PipeWire daemon/TUI split (the cable keeps
-  its own state), Normal/Insert/Visual/Command modes (we stay single-mode and
-  minimal).
+  TUI. Borrowed: `{`/`}` preset cycling, a read-only `[RO]` marker for
+  built-in presets, right-panel response graph. Not applicable: PipeWire
+  daemon/TUI split (the cable keeps its own state),
+  Normal/Insert/Visual/Command modes (we stay single-mode and minimal).
 - **tui-equalizer** (`ratatui/tui-widgets`): band-bar widget; not adopted — we
   draw a braille magnitude curve (`tui/plot.rs`).
 - **AutoEq**: biquad math source (MIT).
@@ -95,8 +96,7 @@ The cable is not plugged in on this machine: `auri devices` reports
    Merge or force-push-with-lease — ask the user.
 2. Push `chore/m6-packaging` after approval; the release workflow runs on
    `main` only.
-3. Optional, still minimal: TUI preset cycling with `{`/`}` (eqtui prior art).
-4. Optional: fully static musl build — blocked on static eudev/libudev.
-5. Hardware validation when the cable is available: `auri devices`, dry-run,
+3. Optional: fully static musl build — blocked on static eudev/libudev.
+4. Hardware validation when the cable is available: `auri devices`, dry-run,
    then one gated `--commit` write.
-6. Backlog and open questions: `TODO.md` §7.
+5. Backlog and open questions: `TODO.md` §7.

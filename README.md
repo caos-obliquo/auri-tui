@@ -21,7 +21,7 @@ Independent implementation. **Not a fork** of
 | `auri-gate` | Safety gate v2: the observed envelope of the 11 official presets, verdict before any write |
 | `auri-policy` | Pre-write policy: flash counters and 2 s spacing, loudness warning, JSONL journal, checklist |
 | `auri-transport` | HID transport: real cable (`hidapi`), recording fake, dry-run writer |
-| `auri-cli` | The `auri` binary: `devices`, `presets`, `show`, `write`, `neutral`, `tui` |
+| `auri-cli` | The `auri` binary: `devices`, `presets`, `show`, `export`, `write`, `neutral`, `tui` |
 
 ## Safety invariants
 
@@ -103,6 +103,8 @@ auri presets
 auri write --preset harman             # dry-run
 auri write --preset harman --commit
 auri tui --preset harman
+auri show --preset harman
+auri export --preset harman --format apo | head -3
 
 # The interactive editor (no file = the neutral preset)
 auri tui
@@ -124,6 +126,7 @@ magnitude response drawn next to the band table.
 | `t` | toggle the yolo profile |
 | `e` | toggle the engineering layer (unlocks HS/LP/HP) |
 | `n` | load the neutral preset |
+| `{` `}` | cycle the official presets (verbatim loads carry `[RO]`) |
 | `r` | restore the curve you started with |
 | `Tab` | focus the pre-write checklist |
 | `Space` | tick the focused confirmation |

@@ -16,12 +16,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   append-only JSONL journal, and the pre-write checklist.
 - `auri-transport`: HID writer with per-report gap, settle delay, and the
   invariant that an abort never sends the commit.
-- `auri` CLI: `devices`, `presets`, `show`, `write`, `neutral`, `tui`;
+- `auri` CLI: `devices`, `presets`, `show`, `export`, `write`, `neutral`, `tui`;
   dry-run by default, `--commit` gated, `--yolo` explicit.
 - The 11 official Kuba Auri curves plus Neutro, built in: `auri presets` lists
-  them, `--preset <id>` loads one (file and preset conflict).
-- Interactive editor: vim motions, live gate verdict, braille response plot,
-  arm-then-write, and the checklist (Tab/Space).
+  them, `--preset <id>` loads one (file and preset conflict, also on `show`).
+- Interactive editor: vim motions, `{`/`}` preset cycling with a `[RO]`
+  read-only marker (any edit clears it — and disarms), live gate verdict,
+  braille response plot, arm-then-write, and the checklist (Tab/Space).
+- `auri export --preset <id> --format apo|pipewire`: host spellings of a
+  curve, offline, no cable involved.
 - `docs/udev.md`, a release workflow, and this changelog.
 
 ### Fixed
@@ -29,6 +32,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - The TUI no longer panics when it cannot open a terminal (`try_init`, with a
   clean error and terminal restore).
 - Ctrl/Alt chords can never arm or write a curve; Ctrl+C quits.
+- A closed stdout (`auri presets | head -1`) no longer panics on EPIPE; the
+  `out`/`err` helpers buffer and ignore write errors.
 
 ### Security
 

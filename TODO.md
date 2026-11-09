@@ -376,8 +376,8 @@ The 11 curves Kuba ships (plus Neutro) are built in, minimal by design:
 Searched prior art while planning: the official page is WebHID
 (`equalizador.kuba.audio`), Danger Circuits shipped an Android WebView bridge
 (no source), and the wider ecosystem (AutoEq, EasyEffects, Equalizer APO) has
-import/export formats. None of that is needed for a preset list; open-auri's
-`io/equalizer-apo.mjs` is the natural next step **if** export is ever wanted.
+import/export formats. open-auri's `io/equalizer-apo.mjs` inspired the now
+shipped `auri export --format apo|pipewire` (numbers only, host spellings).
 
 ---
 
