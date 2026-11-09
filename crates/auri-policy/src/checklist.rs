@@ -9,7 +9,7 @@
 use auri_codec::{Band, BandKind};
 use auri_gate::{
     COEFFICIENT_ABS_WORDS, GateOptions, GateResult, INTERNAL_AUDIBLE_DB, OUTPUT_AUDIBLE_DB,
-    POLE_RADIUS, PREAMP_MAX_DB, PREAMP_MIN_DB, Profile, SECTION_PEAK_DB, Reason, gate_for_write,
+    POLE_RADIUS, PREAMP_MAX_DB, PREAMP_MIN_DB, Profile, Reason, SECTION_PEAK_DB, gate_for_write,
     is_ultrasonic, level_db,
 };
 
@@ -18,12 +18,10 @@ use crate::loudness::{Loudness, LoudnessInput, loudness_warning};
 
 /// The confirmation sentence for curves with kinds (HS, LP, HP) or sections
 /// above 20 kHz the official page never wrote — re-authored.
-pub const EXPERIMENTAL_TEXT: &str =
-    "This curve uses filter types the official page never wrote. Their coefficients are inside the observed envelope, but the firmware has never received these formats.";
+pub const EXPERIMENTAL_TEXT: &str = "This curve uses filter types the official page never wrote. Their coefficients are inside the observed envelope, but the firmware has never received these formats.";
 
 /// Appended when the curve also has a section above 20 kHz — re-authored.
-pub const ULTRASONIC_TEXT: &str =
-    "Filters above 20 kHz: confirm this experimental write.";
+pub const ULTRASONIC_TEXT: &str = "Filters above 20 kHz: confirm this experimental write.";
 
 /// Shown while any required item is still unsatisfied — re-authored.
 pub const LOCKED_TEXT: &str = "Complete every item to enable writing.";
@@ -170,11 +168,7 @@ pub fn lamps_from_gate(verdict: &GateResult) -> Vec<Lamp> {
                 LampState::Unknown
             };
             reasons.extend(own_waived);
-            Lamp {
-                id,
-                state,
-                reasons,
-            }
+            Lamp { id, state, reasons }
         })
         .collect()
 }
@@ -295,12 +289,9 @@ fn largest(values: impl Iterator<Item = f64>) -> Option<f64> {
 /// Whether the curve uses kinds the official page never wrote (HS, LP, HP).
 #[must_use]
 pub fn has_experimental_kinds(bands: &[Band]) -> bool {
-    bands.iter().any(|band| {
-        matches!(
-            band.kind(),
-            BandKind::Hs | BandKind::Lp | BandKind::Hp
-        )
-    })
+    bands
+        .iter()
+        .any(|band| matches!(band.kind(), BandKind::Hs | BandKind::Lp | BandKind::Hp))
 }
 
 /// Whether the curve has a section above 20 kHz: the official page never
@@ -509,8 +500,7 @@ pub fn evaluate_checklist(
     // The confirmation covers HS/LP/HP and any section above 20 kHz; the
     // gate's own experimental option stays kind-based.
     let snapshot: &[Band] = verdict.metrics.bands.as_deref().unwrap_or(input.bands);
-    let experimental_required =
-        has_experimental_kinds(snapshot) || has_ultrasonic_bands(snapshot);
+    let experimental_required = has_experimental_kinds(snapshot) || has_ultrasonic_bands(snapshot);
     let spacing = can_write_now(context.flash, context.now_ms);
     let confirmations = input.confirmations;
 
@@ -551,9 +541,7 @@ pub fn evaluate_checklist(
             satisfied: !yolo || confirmations.yolo_write,
         },
     ];
-    let can_write = items
-        .iter()
-        .all(|item| !item.required || item.satisfied);
+    let can_write = items.iter().all(|item| !item.required || item.satisfied);
 
     ChecklistResult {
         profile: input.profile,
@@ -673,7 +661,11 @@ mod tests {
             g.reasons
         );
         assert_eq!(lamps[LampId::A.index()].state, LampState::Ok);
-        assert_eq!(lamps[LampId::F.index()].state, LampState::Ok, "f always answers");
+        assert_eq!(
+            lamps[LampId::F.index()].state,
+            LampState::Ok,
+            "f always answers"
+        );
 
         // A wrong band count stops before any analysis: every lamp but f is
         // unknown, and f fails with the codec refusal it carries.
@@ -711,15 +703,21 @@ mod tests {
         let g = &lamps[LampId::G.index()];
         assert_eq!(g.state, LampState::Waived, "g was waived, not passed");
         assert!(!g.reasons.is_empty());
-        assert!(lamps
-            .iter()
-            .filter(|lamp| lamp.id != LampId::G)
-            .all(|lamp| lamp.state == LampState::Ok));
+        assert!(
+            lamps
+                .iter()
+                .filter(|lamp| lamp.id != LampId::G)
+                .all(|lamp| lamp.state == LampState::Ok)
+        );
 
         // The same curve under the standard profile fails g outright.
         let standard = gate(&NEUTRAL_BANDS, -26.0, GateOptions::default());
         let lamps = lamps_from_gate(&standard);
-        assert_eq!(lamps[LampId::G.index()].state, LampState::Fail, "class 1 never waives");
+        assert_eq!(
+            lamps[LampId::G.index()].state,
+            LampState::Fail,
+            "class 1 never waives"
+        );
     }
 
     #[test]
@@ -729,8 +727,7 @@ mod tests {
 
         // a: the identity word over its limit, one decimal percent.
         let a = &values[LampId::A.index()];
-        let expected_share =
-            ((1 << 27) as f64 / COEFFICIENT_ABS_WORDS[0] as f64) * 100.0;
+        let expected_share = ((1 << 27) as f64 / COEFFICIENT_ABS_WORDS[0] as f64) * 100.0;
         let shown = a
             .value
             .as_deref()
@@ -767,7 +764,9 @@ mod tests {
     fn no_verdict_means_no_numbers() {
         let values = criteria_values(None);
         assert!(
-            values.iter().all(|value| value.value.is_none() && value.limit.is_none()),
+            values
+                .iter()
+                .all(|value| value.value.is_none() && value.limit.is_none()),
             "a missing metric is shown as nothing, never invented"
         );
     }
@@ -776,7 +775,11 @@ mod tests {
     fn an_early_codec_refusal_leaves_measurements_empty() {
         let verdict = gate(&NEUTRAL_BANDS[..9], -0.5, GateOptions::default());
         let values = criteria_values(Some(&verdict));
-        assert_eq!(values[LampId::A.index()].value, None, "no sections were analysed");
+        assert_eq!(
+            values[LampId::A.index()].value,
+            None,
+            "no sections were analysed"
+        );
         assert_eq!(values[LampId::B.index()].value, None);
         assert_eq!(values[LampId::C.index()].value, None);
         assert_eq!(values[LampId::D.index()].value, None);
@@ -828,11 +831,7 @@ mod tests {
             keep_connected: true,
             ..Confirmations::default()
         };
-        let early = evaluate_checklist(
-            &input(&NEUTRAL_BANDS, ticked),
-            &context(&flash, now),
-            None,
-        );
+        let early = evaluate_checklist(&input(&NEUTRAL_BANDS, ticked), &context(&flash, now), None);
         assert!(!early.can_write, "the first write waits the full interval");
         assert_eq!(early.spacing.wait_ms, 2000);
         assert!(early.item(ItemId::Spacing).is_some_and(|i| !i.satisfied));
@@ -877,7 +876,11 @@ mod tests {
             ..ticked
         };
         let confirmed = evaluate_checklist(&input, &context(&flash, now), None);
-        assert!(confirmed.can_write, "{:?}", confirmed.missing().collect::<Vec<_>>());
+        assert!(
+            confirmed.can_write,
+            "{:?}",
+            confirmed.missing().collect::<Vec<_>>()
+        );
 
         // An ultrasonic section also demands it, even as a plain LS.
         let mut ultrasonic = NEUTRAL_BANDS.to_vec();
@@ -973,7 +976,8 @@ mod tests {
             experimental: false,
             confirmations: Confirmations::default(),
         };
-        let result = evaluate_checklist(&standard_input, &context(&flash, now), Some(&yolo_verdict));
+        let result =
+            evaluate_checklist(&standard_input, &context(&flash, now), Some(&yolo_verdict));
         assert!(
             !result.gate_ok,
             "a yolo verdict never approves a standard write"
@@ -1008,7 +1012,10 @@ mod tests {
         );
         assert_eq!(after.counters.day, 50);
         assert_eq!(after.counters.total, 50);
-        assert!(after.daily_notice, "the 50th write of the day fires the notice");
+        assert!(
+            after.daily_notice,
+            "the 50th write of the day fires the notice"
+        );
     }
 
     #[test]

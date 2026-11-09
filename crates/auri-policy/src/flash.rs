@@ -29,8 +29,7 @@ pub const DAILY_NOTICE_THRESHOLD: u64 = 50;
 const MAX_TIMESTAMP_MS: i64 = 8_640_000_000_000_000;
 
 /// The endurance notice, re-authored (the reference's Portuguese copy is AGPL).
-pub const FLASH_NOTICE_TEXT: &str =
-    "Flash endurance is unknown: memories like this usually survive between 10 thousand and 1 million writes.";
+pub const FLASH_NOTICE_TEXT: &str = "Flash endurance is unknown: memories like this usually survive between 10 thousand and 1 million writes.";
 
 /// Something the flash policy refuses to guess.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -146,8 +145,8 @@ pub fn local_date_key(now_ms: i64) -> Result<String, FlashError> {
     if !is_timestamp(now_ms) {
         return Err(FlashError::InvalidClock(now_ms));
     }
-    let timestamp = chrono::DateTime::from_timestamp_millis(now_ms)
-        .ok_or(FlashError::InvalidClock(now_ms))?;
+    let timestamp =
+        chrono::DateTime::from_timestamp_millis(now_ms).ok_or(FlashError::InvalidClock(now_ms))?;
     let key = timestamp
         .with_timezone(&chrono::Local)
         .format("%Y-%m-%d")
@@ -303,11 +302,10 @@ pub fn load_flash(path: &Path, now_ms: i64) -> FlashState {
 /// [`FlashError::Save`] when the file cannot be written. Callers warn and
 /// continue: losing a counter is safe, retrying a write is not.
 pub fn save_flash(path: &Path, state: &FlashState) -> Result<(), FlashError> {
-    let json = serde_json::to_string_pretty(state)
-        .map_err(|error| FlashError::Save {
-            path: path.to_path_buf(),
-            message: error.to_string(),
-        })?;
+    let json = serde_json::to_string_pretty(state).map_err(|error| FlashError::Save {
+        path: path.to_path_buf(),
+        message: error.to_string(),
+    })?;
     store::write_private(path, json.as_bytes()).map_err(|error| FlashError::Save {
         path: path.to_path_buf(),
         message: error.to_string(),
@@ -422,7 +420,11 @@ mod tests {
         let third = record_write(&next, 3_500).expect("valid clock");
         assert_eq!(third.session, 2);
         assert_eq!(third.total, 2);
-        assert_eq!(third.day.as_ref().map(|d| d.count), Some(2), "same day keeps counting");
+        assert_eq!(
+            third.day.as_ref().map(|d| d.count),
+            Some(2),
+            "same day keeps counting"
+        );
     }
 
     #[test]
@@ -529,7 +531,11 @@ mod tests {
             std::process::id()
         ));
         let state = load_flash(&path, 5_000);
-        assert_eq!(state.last_write_at, Some(5_000), "anchored at the observation");
+        assert_eq!(
+            state.last_write_at,
+            Some(5_000),
+            "anchored at the observation"
+        );
         assert_eq!(state.session, 0);
         assert_eq!(state.total, 0);
         assert!(!can_write_now(&state, 5_000).ok, "fresh still waits");
@@ -541,7 +547,13 @@ mod tests {
         ));
         std::fs::write(&corrupt, "not json at all").expect("temp file");
         let state = load_flash(&corrupt, 9_000);
-        assert_eq!(state, FlashState { last_write_at: Some(9_000), ..FlashState::default() });
+        assert_eq!(
+            state,
+            FlashState {
+                last_write_at: Some(9_000),
+                ..FlashState::default()
+            }
+        );
         let _ = std::fs::remove_file(&corrupt);
     }
 

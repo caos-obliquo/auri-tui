@@ -105,7 +105,9 @@ mod tests {
         let small = loudness_warning(input(Some(-4.1), Some(-7.0), 1));
         assert!(!small.warn, "delta +2.9 dB is under the jump");
         assert!(
-            small.delta_db.is_some_and(|delta| (delta - 2.9).abs() < 1e-12),
+            small
+                .delta_db
+                .is_some_and(|delta| (delta - 2.9).abs() < 1e-12),
             "delta is +2.9 dB, got {:?}",
             small.delta_db
         );
@@ -114,7 +116,9 @@ mod tests {
         assert!(exact.warn, "delta +3.0 dB is a jump");
         assert_eq!(exact.reasons, vec![LoudnessReason::Jump]);
         assert!(
-            exact.delta_db.is_some_and(|delta| (delta - 3.0).abs() < 1e-12),
+            exact
+                .delta_db
+                .is_some_and(|delta| (delta - 3.0).abs() < 1e-12),
             "delta is +3.0 dB, got {:?}",
             exact.delta_db
         );
@@ -172,10 +176,7 @@ mod tests {
         assert!(result.warn);
         assert_eq!(
             result.reasons,
-            vec![
-                LoudnessReason::Jump,
-                LoudnessReason::UnknownState
-            ],
+            vec![LoudnessReason::Jump, LoudnessReason::UnknownState],
             "jump first, then unknown"
         );
     }

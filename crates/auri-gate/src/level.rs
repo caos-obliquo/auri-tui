@@ -134,7 +134,11 @@ mod tests {
     #[test]
     fn mean_frequencies_are_the_93_official_points() {
         let points = mean_frequencies();
-        assert_eq!(points.len(), 93, "the 280-point grid has 93 in 300 Hz–3 kHz");
+        assert_eq!(
+            points.len(),
+            93,
+            "the 280-point grid has 93 in 300 Hz–3 kHz"
+        );
         assert!(points.iter().all(|f| (300.0..=3000.0).contains(f)));
         assert!(points.windows(2).all(|w| w[1] > w[0]), "strictly rising");
         // The first and last points, pinned to the reference's rounding.

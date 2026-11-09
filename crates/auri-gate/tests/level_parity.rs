@@ -54,7 +54,10 @@ fn every_level_matches_the_javascript_level_db() {
         return;
     };
     let fixture: Fixture = serde_json::from_str(&text).expect("the corpus parses");
-    assert!(!fixture.cases.is_empty(), "the corpus contained nothing to compare");
+    assert!(
+        !fixture.cases.is_empty(),
+        "the corpus contained nothing to compare"
+    );
 
     let mut worst = 0.0_f64;
     for case in &fixture.cases {
