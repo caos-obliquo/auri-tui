@@ -38,8 +38,9 @@ pub use flash::{
     record_write_on, save_flash,
 };
 pub use journal::{
-    JournalEntry, JournalError, JournalStatus, append as journal_append, journal_path, last_status,
-    last_written_level_db, read as journal_read,
+    JournalEntry, JournalError, JournalStatus, append as journal_append,
+    format_timestamp as journal_timestamp, journal_path, last_status, last_written_level_db,
+    read as journal_read, read_all as journal_read_all, read_all_from as journal_read_all_from,
 };
 pub use loudness::{
     LOUDNESS_JUMP_DB, LOUDNESS_TOLERANCE_DB, LOUDNESS_WARNING_TEXT, Loudness, LoudnessInput,

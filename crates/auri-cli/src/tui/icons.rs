@@ -14,6 +14,8 @@ pub struct Icons {
     pub list: &'static str,
     /// The marker of the response plot.
     pub wave: &'static str,
+    /// The marker of the journal log.
+    pub log: &'static str,
     /// A ticked confirmation.
     pub checked: &'static str,
     /// An unticked confirmation.
@@ -54,6 +56,7 @@ impl Icons {
             note: "♫",
             list: "≡",
             wave: "∿",
+            log: "☰",
             checked: "☑",
             unchecked: "☐",
             cross: "✗",
@@ -79,6 +82,7 @@ impl Icons {
             note: "*",
             list: "=",
             wave: "~",
+            log: "=",
             checked: "[x]",
             unchecked: "[ ]",
             cross: "x",
@@ -119,6 +123,7 @@ mod tests {
             icons.note,
             icons.list,
             icons.wave,
+            icons.log,
             icons.checked,
             icons.unchecked,
             icons.cross,
@@ -144,7 +149,7 @@ mod tests {
 
     #[test]
     fn the_unicode_set_only_uses_allowed_glyphs() {
-        let allowed = "♫≡∿✓✗⚠●○▸☑☐▁▂▃▄▅▆▇█─│╭╮╰╯·";
+        let allowed = "♫≡∿☰✓✗⚠●○▸☑☐▁▂▃▄▅▆▇█─│╭╮╰╯·";
         for glyph in unicode_glyphs(&Icons::unicode()) {
             assert!(
                 allowed.contains(glyph),

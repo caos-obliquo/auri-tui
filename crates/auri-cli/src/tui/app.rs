@@ -10,8 +10,9 @@ use auri_codec::{Band, BandKind, NEUTRAL_BANDS};
 use auri_gate::{GAIN_MAX_DB, GAIN_MIN_DB, GateOptions, GateResult, Profile, gate_for_write};
 use auri_policy::{
     ChecklistContext, ChecklistInput, ChecklistResult, Confirmations, FlashState, ItemId,
-    JournalStatus, LOCKED_TEXT, evaluate_checklist, flash_path, journal_path, journal_read,
-    last_status, last_written_level_db, load_flash, now_ms as policy_now_ms,
+    JournalEntry, JournalStatus, LOCKED_TEXT, evaluate_checklist, flash_path, journal_path,
+    journal_read, journal_read_all, journal_read_all_from, last_status, last_written_level_db,
+    load_flash, now_ms as policy_now_ms,
 };
 
 /// Smallest frequency the editor will step to, in Hz.
@@ -195,6 +196,13 @@ pub struct App {
     pub now_ms: i64,
     /// What a write would go to (the runner updates it after opening a sink).
     pub target: String,
+    /// Whether the read-only journal log overlay is open.
+    pub log_open: bool,
+    /// The journal row the log overlay is on. The view follows it, and it
+    /// never leaves the entries there are.
+    pub log_scroll: u16,
+    /// The journal entries the log overlay shows.
+    pub log_entries: Vec<JournalEntry>,
     /// The session's clock and state files.
     pub env: SessionEnv,
 }
@@ -274,6 +282,9 @@ impl App {
             checklist,
             now_ms: env.now_ms,
             target: "dry-run".to_string(),
+            log_open: false,
+            log_scroll: 0,
+            log_entries: Vec::new(),
             env,
         };
         app.original = app.bands.clone();
@@ -457,8 +468,91 @@ impl App {
         self.load_preset(next);
     }
 
+    /// Opens the read-only journal log and loads the entries it shows.
+    ///
+    /// The log never writes: it reads the journal file the session was
+    /// given, and a missing or broken one is simply an empty list.
+    pub fn open_log(&mut self) {
+        self.log_entries = self.read_log_entries();
+        self.log_scroll = 0;
+        self.log_open = true;
+    }
+
+    /// Closes the log overlay. The editor underneath is exactly as it was.
+    pub fn close_log(&mut self) {
+        self.log_open = false;
+        self.log_scroll = 0;
+    }
+
+    /// The journal entries the log shows.
+    ///
+    /// The default session reads the shared journal; a session with its own
+    /// journal path reads that file instead. A broken journal is an empty
+    /// list — the log never shows half a history.
+    fn read_log_entries(&self) -> Vec<JournalEntry> {
+        if self.env.journal_path == journal_path() {
+            journal_read_all()
+        } else {
+            journal_read_all_from(&self.env.journal_path)
+        }
+    }
+
+    /// Scrolls the log by `delta` rows, clamped to the entries there are.
+    pub fn scroll_log(&mut self, delta: i32) {
+        let last = self.log_entries.len().saturating_sub(1);
+        let current = usize::from(self.log_scroll);
+        let next = if delta >= 0 {
+            current.saturating_add(delta as usize).min(last)
+        } else {
+            current.saturating_sub(delta.unsigned_abs() as usize)
+        };
+        self.log_scroll = u16::try_from(next).unwrap_or(u16::MAX);
+    }
+
+    /// Scrolls the log to its last entry.
+    pub fn scroll_log_to_end(&mut self) {
+        let last = self.log_entries.len().saturating_sub(1);
+        self.log_scroll = u16::try_from(last).unwrap_or(u16::MAX);
+    }
+
+    /// Handles one key while the log overlay is open.
+    ///
+    /// The overlay owns the keyboard: it scrolls and it closes, and every
+    /// other key is ignored — so nothing can be edited, armed or written
+    /// from inside the log.
+    pub fn handle_log_key(&mut self, key: Key) -> Effect {
+        match key {
+            Key::Esc | Key::Char('q') => {
+                self.close_log();
+                Effect::Nothing
+            }
+            Key::Char('j') | Key::Down => {
+                self.scroll_log(1);
+                Effect::Nothing
+            }
+            Key::Char('k') | Key::Up => {
+                self.scroll_log(-1);
+                Effect::Nothing
+            }
+            Key::Char('g') => {
+                self.log_scroll = 0;
+                Effect::Nothing
+            }
+            Key::Char('G') => {
+                self.scroll_log_to_end();
+                Effect::Nothing
+            }
+            _ => Effect::Nothing,
+        }
+    }
+
     /// Handles one key and reports what the runner must do next.
     pub fn handle_key(&mut self, key: Key) -> Effect {
+        // The log overlay owns the keyboard while it is open: no editor key
+        // can reach the arm or the write path from there.
+        if self.log_open {
+            return self.handle_log_key(key);
+        }
         match key {
             Key::Char('q') => {
                 self.quit = true;
@@ -610,8 +704,12 @@ impl App {
                 }
                 Effect::Nothing
             }
+            Key::Char('L') => {
+                self.open_log();
+                Effect::Nothing
+            }
             Key::Char('?') => {
-                self.status = "hjkl move · +/- step · c kind · x off · { } preset · t yolo · e layer · Tab focus · Space tick · w write · q quit"
+                self.status = "hjkl move · +/- step · c kind · x off · { } preset · t yolo · e layer · Tab focus · Space tick · L log · w write · q quit"
                     .to_string();
                 Effect::Nothing
             }
@@ -836,6 +934,19 @@ mod tests {
             .iter()
             .map(|reason| reason.code.as_str())
             .collect()
+    }
+
+    /// One journaled write attempt, as the log would show it.
+    fn journal_entry(ts: i64, status: JournalStatus) -> JournalEntry {
+        JournalEntry {
+            ts,
+            status,
+            crc: "0x4fff".to_string(),
+            bands: NEUTRAL_BANDS.to_vec(),
+            preamp_db: -0.5,
+            profile: Profile::Standard,
+            label: "test sink".to_string(),
+        }
     }
 
     #[test]
@@ -1304,5 +1415,107 @@ mod tests {
         app.handle_key(Key::Char('r'));
         assert_eq!(app.bands, crate::presets::PRESETS[0].bands.to_vec());
         assert_eq!(app.preset_index, None);
+    }
+
+    #[test]
+    fn opening_log_then_closing_returns_to_editor() {
+        let mut app = ready(false);
+        let bands = app.bands.clone();
+        let preamp = app.preamp_db;
+        let status = app.status.clone();
+
+        app.handle_key(Key::Char('L'));
+        assert!(app.log_open, "L opens the log");
+
+        // Nothing the editor does may happen from inside the log.
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(!app.armed, "the log must never arm a write");
+        assert_eq!(app.handle_key(Key::Char('x')), Effect::Nothing);
+        assert_eq!(app.bands, bands, "the log must not edit the curve");
+        assert_eq!(app.preamp_db, preamp, "the log must not step the preamp");
+
+        // `q` closes the log; it never quits the editor from inside it.
+        assert_eq!(app.handle_key(Key::Char('q')), Effect::Nothing);
+        assert!(!app.log_open, "q closes the log");
+        assert!(!app.quit, "closing the log is not quitting the editor");
+
+        // Esc closes it too.
+        app.handle_key(Key::Char('L'));
+        assert!(app.log_open);
+        assert_eq!(app.handle_key(Key::Esc), Effect::Nothing);
+        assert!(!app.log_open, "Esc closes the log");
+        assert!(!app.quit);
+
+        // The editor underneath is exactly as it was.
+        assert_eq!(app.bands, bands);
+        assert_eq!(app.preamp_db, preamp);
+        assert_eq!(app.status, status, "the status line is untouched");
+    }
+
+    #[test]
+    fn the_log_scrolls_and_clamps_to_the_entries_there_are() {
+        let mut app = app();
+        app.log_entries = (0..5)
+            .map(|index| journal_entry(index, JournalStatus::Ok))
+            .collect();
+        app.log_open = true;
+
+        app.handle_key(Key::Char('j'));
+        assert_eq!(app.log_scroll, 1, "j walks down the log");
+        for _ in 0..20 {
+            app.handle_key(Key::Char('j'));
+        }
+        assert_eq!(app.log_scroll, 4, "the scroll stops at the last entry");
+        for _ in 0..20 {
+            app.handle_key(Key::Char('k'));
+        }
+        assert_eq!(app.log_scroll, 0, "the scroll stops at the first entry");
+
+        app.handle_key(Key::Char('G'));
+        assert_eq!(app.log_scroll, 4, "G goes to the end");
+        app.handle_key(Key::Char('g'));
+        assert_eq!(app.log_scroll, 0, "g goes back to the top");
+    }
+
+    #[test]
+    fn an_empty_log_scrolls_nowhere() {
+        let mut app = app();
+        app.log_open = true;
+        for key in [
+            Key::Char('j'),
+            Key::Down,
+            Key::Char('k'),
+            Key::Up,
+            Key::Char('G'),
+        ] {
+            assert_eq!(app.handle_key(key), Effect::Nothing);
+        }
+        assert_eq!(app.log_scroll, 0, "an empty log has nowhere to scroll");
+    }
+
+    #[test]
+    fn the_log_reads_the_journal_and_never_writes_it() {
+        let dir = std::env::temp_dir().join(format!("auri-log-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let journal = dir.join("journal.jsonl");
+        let env = SessionEnv {
+            now_ms: 0,
+            flash_path: dir.join("flash.json"),
+            journal_path: journal.clone(),
+        };
+        let mut app = App::with_env(NEUTRAL_BANDS.to_vec(), -0.5, false, env);
+
+        app.handle_key(Key::Char('L'));
+        assert!(app.log_open);
+        assert!(
+            app.log_entries.is_empty(),
+            "a journal that is not there shows nothing"
+        );
+        assert!(
+            !journal.exists(),
+            "the log is read-only: it must never create the journal"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

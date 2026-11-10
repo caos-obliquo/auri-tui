@@ -125,6 +125,39 @@ pub fn read(path: &Path) -> Result<Vec<JournalEntry>, JournalError> {
     Ok(entries)
 }
 
+/// Every entry of the journal at `path`, oldest first.
+///
+/// A missing, unreadable or malformed journal is *no memory*: the list comes
+/// back empty, never partial — a partial read could make a broken history
+/// look like a healthy one. Nothing here ever writes.
+#[must_use]
+pub fn read_all_from(path: &Path) -> Vec<JournalEntry> {
+    read(path).unwrap_or_default()
+}
+
+/// Every entry of the journal at the default path, oldest first.
+///
+/// The same rule as [`read_all_from`]: a broken journal is an empty list.
+#[must_use]
+pub fn read_all() -> Vec<JournalEntry> {
+    read_all_from(&journal_path())
+}
+
+/// The moment a journal entry ended, as a human-readable local time.
+///
+/// `—` when the timestamp is not a usable epoch millisecond: a wrong time is
+/// better than a wrong claim.
+#[must_use]
+pub fn format_timestamp(ts: i64) -> String {
+    chrono::DateTime::from_timestamp_millis(ts)
+        .map(|time| {
+            time.with_timezone(&chrono::Local)
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        })
+        .unwrap_or_else(|| "—".to_string())
+}
+
 /// The `level_db` of the newest curve that actually reached the cable: the
 /// newest [`JournalStatus::Ok`] entry, skipping simulated and interrupted
 /// ones. `None` when there is none (or its curve no longer encodes).
@@ -240,5 +273,40 @@ mod tests {
             Err(JournalError::Line { line: 2, .. })
         ));
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_missing_journal_reads_as_an_empty_list() {
+        let path = temp_journal("read-all-missing");
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            read_all_from(&path).is_empty(),
+            "a missing journal is no memory, not an error"
+        );
+    }
+
+    #[test]
+    fn a_broken_journal_reads_as_an_empty_list_never_a_partial_one() {
+        let path = temp_journal("read-all-broken");
+        let _ = std::fs::remove_file(&path);
+        append(&path, &entry(1_000, JournalStatus::Ok)).expect("append");
+        store::append_private(&path, b"{not json\n").expect("append junk");
+        assert!(
+            read_all_from(&path).is_empty(),
+            "a broken journal is refused whole, never half-trusted"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_timestamp_becomes_a_human_readable_local_time() {
+        let text = format_timestamp(0);
+        assert_eq!(text.len(), 19, "YYYY-MM-DD HH:MM:SS: {text}");
+        assert!(text.contains('-') && text.contains(':'), "{text}");
+        assert_eq!(
+            format_timestamp(i64::MAX),
+            "—",
+            "an impossible time is not a time"
+        );
     }
 }

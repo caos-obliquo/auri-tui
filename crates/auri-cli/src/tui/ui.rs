@@ -5,7 +5,10 @@
 
 use auri_codec::{Band, BandKind};
 use auri_gate::{GateResult, Profile};
-use auri_policy::{FLASH_NOTICE_TEXT, ItemId, LOCKED_TEXT, LOUDNESS_WARNING_TEXT, LoudnessReason};
+use auri_policy::{
+    FLASH_NOTICE_TEXT, ItemId, JournalEntry, JournalStatus, LOCKED_TEXT, LOUDNESS_WARNING_TEXT,
+    LoudnessReason, journal_timestamp,
+};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -43,14 +46,43 @@ const CURVE_MIN_HEIGHT: usize = 8;
 const TABLE_WIDTH: usize = 46;
 
 /// The keys, in the order they matter.
-const KEY_HINTS: &str =
-    "hjkl move · +- step · c kind · x off · { } preset · t yolo · e layer · w write · q quit";
+const KEY_HINTS: &str = "hjkl move · L log · +- step · c kind · x off · { } preset · t yolo · e layer · w write · q quit";
+
+/// The keys of the journal log, in the order they matter.
+const LOG_KEY_HINTS: &str = "j/k scroll · g top · G bottom · Esc or q close";
+
+/// The width of the timestamp column, in cells (`YYYY-MM-DD HH:MM:SS`).
+const LOG_TIME_WIDTH: usize = 19;
+
+/// The width of the status column, in cells (`Interrupted` is the longest).
+const LOG_STATUS_WIDTH: usize = 11;
+
+/// The width of the CRC column, in cells (`0x` plus the hex digest).
+const LOG_CRC_WIDTH: usize = 10;
 
 /// Renders one frame.
 pub fn render(frame: &mut Frame, app: &App) {
     let icons = Icons::for_mode(app.ascii);
     let theme = Theme::new();
     let area = frame.area();
+
+    // The journal log takes over the page while it is open: the editor is
+    // still there underneath, one keypress away.
+    if app.log_open {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),
+                Constraint::Min(6),
+                Constraint::Length(2),
+            ])
+            .split(area);
+        header(frame, app, rows[0], &icons, &theme);
+        render_log(frame, app, rows[1], &icons, &theme);
+        footer(frame, app, rows[2], &theme);
+        return;
+    }
+
     let gate = gate_lines(app, &icons, &theme);
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -183,6 +215,159 @@ fn body(frame: &mut Frame, app: &App, area: Rect, icons: &Icons, theme: &Theme) 
     };
     bands(frame, app, table, icons, theme);
     response(frame, app, columns[1], icons, theme);
+}
+
+/// The journal log: what the cable was told, and when.
+///
+/// It is read-only by construction: it shows what the journal already says
+/// and writes nothing, ever.
+fn render_log(frame: &mut Frame, app: &App, area: Rect, icons: &Icons, theme: &Theme) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let label = Line::from(vec![
+        Span::styled(icons.log, theme.structure_style()),
+        Span::styled(" J O U R N A L", theme.label_style()),
+        Span::styled(
+            format!(" · {} entries · read-only", app.log_entries.len()),
+            theme.structure_style(),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(label), Rect { height: 1, ..area });
+    if area.height < 2 {
+        return;
+    }
+    frame.render_widget(
+        Paragraph::new(log_header(theme)),
+        Rect {
+            y: area.y + 1,
+            height: 1,
+            ..area
+        },
+    );
+    if area.height < 3 {
+        return;
+    }
+
+    let rows = area.height.saturating_sub(2) as usize;
+    let total = app.log_entries.len();
+    if total == 0 {
+        frame.render_widget(
+            Paragraph::new(log_empty(theme)),
+            Rect {
+                y: area.y + 2,
+                height: 1,
+                ..area
+            },
+        );
+        return;
+    }
+
+    // The view follows the row the log is on, and it never leaves the entries
+    // there are.
+    let selected = usize::from(app.log_scroll).min(total - 1);
+    let first = selected
+        .saturating_sub(rows.saturating_sub(1))
+        .min(total.saturating_sub(rows));
+    let mut lines = Vec::with_capacity(rows);
+    for (offset, entry) in app.log_entries[first..].iter().take(rows).enumerate() {
+        lines.push(log_row(entry, first + offset == selected, theme));
+    }
+    frame.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            y: area.y + 2,
+            height: rows as u16,
+            ..area
+        },
+    );
+}
+
+/// The column headings of the journal log.
+fn log_header(theme: &Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<time$}", "TIMESTAMP", time = LOG_TIME_WIDTH),
+            theme.structure_style(),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<status$}", "STATUS", status = LOG_STATUS_WIDTH),
+            theme.structure_style(),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<crc$}", "CRC", crc = LOG_CRC_WIDTH),
+            theme.structure_style(),
+        ),
+        Span::raw("  "),
+        Span::styled("LABEL", theme.structure_style()),
+    ])
+}
+
+/// One row of the journal log: when it happened, how it ended, what it was.
+fn log_row(entry: &JournalEntry, selected: bool, theme: &Theme) -> Line<'static> {
+    let emphasised = |base: Style| {
+        if selected {
+            base.add_modifier(Modifier::BOLD)
+        } else {
+            base
+        }
+    };
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!(
+                "{:<time$}",
+                journal_timestamp(entry.ts),
+                time = LOG_TIME_WIDTH
+            ),
+            emphasised(theme.text_style()),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!(
+                "{:<status$}",
+                log_status_text(entry.status),
+                status = LOG_STATUS_WIDTH
+            ),
+            emphasised(log_status_style(entry.status, theme)),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<crc$}", entry.crc, crc = LOG_CRC_WIDTH),
+            emphasised(theme.text_style()),
+        ),
+        Span::raw("  "),
+        Span::styled(entry.label.clone(), emphasised(theme.text_style())),
+    ])
+}
+
+/// How a journal status reads in the log.
+const fn log_status_text(status: JournalStatus) -> &'static str {
+    match status {
+        JournalStatus::Ok => "ok",
+        JournalStatus::Interrupted => "Interrupted",
+        JournalStatus::Simulated => "Simulated",
+    }
+}
+
+/// The colour of a journal status: what it says about the cable.
+fn log_status_style(status: JournalStatus, theme: &Theme) -> Style {
+    match status {
+        JournalStatus::Ok => Style::default().fg(theme.log_ok),
+        JournalStatus::Interrupted => Style::default().fg(theme.log_interrupted),
+        JournalStatus::Simulated => Style::default().fg(theme.log_simulated),
+    }
+}
+
+/// The empty journal: nothing to show, and nothing to worry about.
+fn log_empty(theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        "  no journal entries to show — the journal is empty or unreadable",
+        theme.structure_style(),
+    ))
 }
 
 fn bands(frame: &mut Frame, app: &App, area: Rect, icons: &Icons, theme: &Theme) {
@@ -845,8 +1030,14 @@ fn footer(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     if area.height < 2 {
         return;
     }
+    // The log overlay has its own keys: the editor's are not its own.
+    let hints = if app.log_open {
+        LOG_KEY_HINTS
+    } else {
+        KEY_HINTS
+    };
     frame.render_widget(
-        Paragraph::new(Span::styled(KEY_HINTS, theme.structure_style())),
+        Paragraph::new(Span::styled(hints, theme.structure_style())),
         Rect {
             y: area.y + 1,
             height: 1,
@@ -886,6 +1077,7 @@ fn active_count(app: &App) -> usize {
 mod tests {
     use super::*;
     use crate::tui::app::Key;
+    use auri_codec::NEUTRAL_BANDS;
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
 
@@ -915,6 +1107,27 @@ mod tests {
         app.confirmations.volume_lowered = true;
         app.confirmations.keep_connected = true;
         app.refresh_checklist();
+        app
+    }
+
+    /// One journaled write attempt, as the log would show it.
+    fn journal_entry(ts: i64, status: JournalStatus, crc: &str, label: &str) -> JournalEntry {
+        JournalEntry {
+            ts,
+            status,
+            crc: crc.to_string(),
+            bands: NEUTRAL_BANDS.to_vec(),
+            preamp_db: -0.5,
+            profile: Profile::Standard,
+            label: label.to_string(),
+        }
+    }
+
+    /// An editor with the log overlay open and the given entries in it.
+    fn with_log(entries: Vec<JournalEntry>) -> App {
+        let mut app = App::neutral(false);
+        app.log_open = true;
+        app.log_entries = entries;
         app
     }
 
@@ -1207,5 +1420,143 @@ mod tests {
         assert!(text.ends_with("20k"), "{text}");
         assert!(text.contains("100"), "{text}");
         assert!(text.contains("1k"), "{text}");
+    }
+
+    #[test]
+    fn a_log_view_renders_journal_entries() {
+        let app = with_log(vec![
+            journal_entry(1_700_000_000_000, JournalStatus::Ok, "0x4fff", "Kuba Auri"),
+            journal_entry(
+                1_700_000_060_000,
+                JournalStatus::Interrupted,
+                "0xbeef",
+                "Kuba Auri",
+            ),
+            journal_entry(
+                1_700_000_120_000,
+                JournalStatus::Simulated,
+                "0xcafe",
+                "preview",
+            ),
+        ]);
+        let text = screen(&app);
+
+        assert!(
+            text.contains("J O U R N A L"),
+            "the log names itself: {text}"
+        );
+        assert!(text.contains("TIMESTAMP"), "the header row: {text}");
+        assert!(text.contains("STATUS"), "the header row: {text}");
+        assert!(text.contains("CRC"), "the header row: {text}");
+        assert!(text.contains("LABEL"), "the header row: {text}");
+        assert!(
+            text.contains(&journal_timestamp(1_700_000_000_000)),
+            "the timestamp must be human-readable: {text}"
+        );
+        assert!(text.contains("0x4fff"), "the crc is shown: {text}");
+        assert!(text.contains("0xbeef"), "the crc is shown: {text}");
+        assert!(text.contains("0xcafe"), "the crc is shown: {text}");
+        assert!(text.contains("ok"), "the status is shown: {text}");
+        assert!(text.contains("Interrupted"), "the status is shown: {text}");
+        assert!(text.contains("Simulated"), "the status is shown: {text}");
+        assert!(text.contains("Kuba Auri"), "the label is shown: {text}");
+        assert!(text.contains("preview"), "the label is shown: {text}");
+        assert!(
+            text.contains("read-only"),
+            "the log says what it is: {text}"
+        );
+    }
+
+    #[test]
+    fn a_log_view_handles_empty_journal() {
+        let app = with_log(Vec::new());
+        let text = screen(&app);
+        assert!(
+            text.contains("J O U R N A L"),
+            "the log names itself: {text}"
+        );
+        assert!(
+            text.contains("no journal entries"),
+            "the empty state must say so: {text}"
+        );
+        assert!(
+            text.contains("read-only"),
+            "the log says what it is: {text}"
+        );
+    }
+
+    #[test]
+    fn the_log_view_takes_over_the_page() {
+        let app = with_log(vec![journal_entry(
+            1_700_000_000_000,
+            JournalStatus::Ok,
+            "0x4fff",
+            "Kuba Auri",
+        )]);
+        let text = screen(&app);
+        assert!(
+            !text.contains("R E S P O N S E"),
+            "the plot is gone: {text}"
+        );
+        assert!(!text.contains("gate:"), "the verdict is gone: {text}");
+        assert!(text.contains("kuba auri"), "the header stays: {text}");
+        assert!(
+            text.contains("j/k scroll"),
+            "the footer carries the log's keys: {text}"
+        );
+    }
+
+    #[test]
+    fn the_log_scrolls_within_the_entries_there_are() {
+        let entries = (0..40)
+            .map(|index| {
+                journal_entry(
+                    1_700_000_000_000 + i64::from(index) * 1_000,
+                    JournalStatus::Ok,
+                    "0x4fff",
+                    "Kuba Auri",
+                )
+            })
+            .collect();
+        let mut app = with_log(entries);
+
+        let first = screen(&app);
+        assert!(
+            first.contains(&journal_timestamp(1_700_000_000_000)),
+            "the first entry is shown: {first}"
+        );
+
+        app.handle_key(Key::Char('j'));
+        assert_eq!(app.log_scroll, 1);
+        app.handle_key(Key::Char('G'));
+        assert_eq!(app.log_scroll, 39, "the scroll stops at the last entry");
+        let last = screen(&app);
+        assert!(
+            last.contains(&journal_timestamp(1_700_000_039_000)),
+            "the last entry is shown: {last}"
+        );
+        assert!(
+            !last.contains(&journal_timestamp(1_700_000_000_000)),
+            "the view followed the scroll: {last}"
+        );
+
+        app.handle_key(Key::Char('k'));
+        assert_eq!(app.log_scroll, 38);
+        app.handle_key(Key::Char('g'));
+        assert_eq!(app.log_scroll, 0);
+    }
+
+    #[test]
+    fn rendering_the_log_never_panics_on_a_tiny_terminal() {
+        let mut terminal = Terminal::new(TestBackend::new(10, 6)).expect("test backend");
+        let app = with_log(vec![journal_entry(
+            1_700_000_000_000,
+            JournalStatus::Ok,
+            "0x4fff",
+            "Kuba Auri",
+        )]);
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("small frame");
     }
 }

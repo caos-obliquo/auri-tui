@@ -80,7 +80,15 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App, commit: bool) -> Re
             continue;
         }
 
-        match app.handle_key(decode(raw)) {
+        // The log overlay owns the keyboard while it is open: no editor key
+        // can reach the arm or the write path from there.
+        let key = decode(raw);
+        let effect = if app.log_open {
+            app.handle_log_key(key)
+        } else {
+            app.handle_key(key)
+        };
+        match effect {
             Effect::Nothing => {}
             Effect::Quit => break,
             Effect::Write => send(app, commit),

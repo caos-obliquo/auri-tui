@@ -133,6 +133,7 @@ labels, gain bars beside every band and a node on the curve for every band.
 | `n` | load the neutral preset |
 | `{` `}` | cycle the official presets (verbatim loads carry `[RO]`) |
 | `r` | restore the curve you started with |
+| `L` | open the journal log (read-only: `j`/`k` scroll, `Esc` or `q` closes) |
 | `Tab` | focus the pre-write checklist |
 | `Space` | tick the focused confirmation |
 | `w` / `Enter` | arm, then write — twice, always |

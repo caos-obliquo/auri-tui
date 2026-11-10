@@ -2,9 +2,9 @@
 //!
 //! The interface is deliberately colour-poor. Exactly one accent marks the
 //! response curve, the band under the cursor and that band's node; green means
-//! a gate that said yes and nothing else; red means a gate that said no and
-//! nothing else. Everything that is only structure — rules, labels, inactive
-//! rows — is grey.
+//! a gate that said yes — and a journal entry that reached the cable; red
+//! means a gate that said no and nothing else. Everything that is only
+//! structure — rules, labels, inactive rows — is grey.
 
 use ratatui::style::{Color, Modifier, Style};
 
@@ -33,6 +33,12 @@ pub struct Theme {
     pub cut: Color,
     /// A warning that does not block a write.
     pub warn: Color,
+    /// A journal entry that reached the cable.
+    pub log_ok: Color,
+    /// A journal entry that failed midway: what the cable holds is unknown.
+    pub log_interrupted: Color,
+    /// A journal entry that never reached the flash.
+    pub log_simulated: Color,
 }
 
 impl Theme {
@@ -48,6 +54,9 @@ impl Theme {
             boost: Color::LightRed,
             cut: Color::LightBlue,
             warn: Color::LightYellow,
+            log_ok: Color::Green,
+            log_interrupted: Color::LightYellow,
+            log_simulated: Color::DarkGray,
         }
     }
 
@@ -107,5 +116,21 @@ mod tests {
         assert_ne!(theme.boost, Color::Red);
         assert_ne!(theme.cut, Color::Red);
         assert_ne!(theme.warn, Color::Red);
+    }
+
+    #[test]
+    fn the_journal_has_its_own_status_colours() {
+        let theme = Theme::new();
+        assert_eq!(theme.log_ok, Color::Green, "a write that reached the cable");
+        assert_eq!(
+            theme.log_interrupted,
+            Color::LightYellow,
+            "a write that failed midway"
+        );
+        assert_eq!(
+            theme.log_simulated,
+            Color::DarkGray,
+            "a write that never reached the flash"
+        );
     }
 }
