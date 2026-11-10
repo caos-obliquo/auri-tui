@@ -16,11 +16,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # Linux only. The tool targets the Kuba Auri over hidraw/udev and the
+        # release workflow publishes a Linux binary, so a macOS runner added
+        # no coverage — it only stalled the queue.
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
-      - name: Install deps (Linux)
-        if: runner.os == 'Linux'
+      - name: Install deps
         run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
