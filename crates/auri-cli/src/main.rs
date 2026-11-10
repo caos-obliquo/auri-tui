@@ -107,6 +107,9 @@ enum Command {
         /// Judge under the yolo profile.
         #[arg(long)]
         yolo: bool,
+        /// Draw the interface with plain ASCII instead of Unicode glyphs.
+        #[arg(long)]
+        ascii: bool,
     },
 }
 
@@ -222,10 +225,11 @@ fn run() -> Result<(), String> {
             preset,
             commit,
             yolo,
+            ascii,
         } => {
             let preset_index = preset.as_deref().and_then(presets::index_of);
             let curve = curve_arg(file, preset)?;
-            tui::run(curve, preset_index, commit, yolo)
+            tui::run(curve, preset_index, commit, yolo, ascii)
         }
     }
 }

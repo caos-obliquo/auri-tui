@@ -25,7 +25,7 @@ nothing from it and writes only curves the safety gate approves.
 | `auri-gate` | verdict before any write; 19 reason codes | `gate.rs`, `thresholds.rs` (generated), `policy.rs`, `level.rs` |
 | `auri-policy` | flash spacing/counters, loudness warning, JSONL journal, checklist | `flash.rs`, `journal.rs`, `checklist.rs`, `loudness.rs`, `store.rs` |
 | `auri-transport` | HID writer; abort never commits | `writer.rs`, `real.rs`, `fake.rs` |
-| `auri-cli` | the `auri` binary + TUI | `main.rs`, `curve.rs`, `presets.rs` (generated), `tui/{app,mod,ui,plot}.rs` |
+| `auri-cli` | the `auri` binary + TUI | `main.rs`, `curve.rs`, `presets.rs` (generated), `tui/{app,mod,ui,plot,icons,theme}.rs` |
 
 Data flow: `CurveFile` → `encode_reports` → 9×31-byte reports + commit report.
 `gate_for_write` judges the curve first; the TUI re-judges on every keystroke.
@@ -91,7 +91,9 @@ write as `status:"ok"`.
   daemon/TUI split (the cable keeps its own state),
   Normal/Insert/Visual/Command modes (we stay single-mode and minimal).
 - **tui-equalizer** (`ratatui/tui-widgets`): band-bar widget; not adopted — we
-  draw a braille magnitude curve (`tui/plot.rs`).
+  draw the magnitude curve ourselves (`tui/plot.rs`): a box-drawing line with
+  axis labels and one node per band, the braille bitmap only as the fallback
+  for cramped terminals.
 - **AutoEq**: biquad math source (MIT).
 
 ## The flash-spacing deadlock (fixed, `003db88`)

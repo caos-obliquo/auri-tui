@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The TUI was re-skinned: one accent colour (`Color::Indexed(208)`) for the
+  response curve, the selected band and its node, green only for a `PASS` and
+  red only for a `REFUSED`. Thin rules and letter-spaced section labels
+  replace the boxes, the key hints moved out of the titles, every band shows a
+  gain bar centred on 0 dB, and the response is drawn as a line with an axis,
+  decade marks and one node per band. `auri tui --ascii` draws the same
+  screen with plain ASCII only.
 - The HID transport no longer links `libudev`: the cable is found and opened
   through `/dev/hidraw*` and sysfs, in safe Rust. `cargo build --release
   --target x86_64-unknown-linux-musl` now produces a fully static binary

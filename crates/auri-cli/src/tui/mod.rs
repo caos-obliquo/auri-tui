@@ -5,7 +5,9 @@
 //! is recomputed on every keystroke, so the curve can never get ahead of it.
 
 mod app;
+mod icons;
 mod plot;
+mod theme;
 mod ui;
 
 pub use app::{App, Effect, Key};
@@ -38,9 +40,11 @@ pub fn run(
     preset_index: Option<usize>,
     commit: bool,
     yolo: bool,
+    ascii: bool,
 ) -> Result<(), String> {
     let mut app = App::new(curve.eq_bands, curve.preamp_db, yolo);
     app.preset_index = preset_index;
+    app.ascii = ascii;
     app.target = if commit { "the cable" } else { "dry-run" }.to_string();
     // try_init, never init: a missing or unusable TTY must be an error the
     // caller prints, not a panic — and a half-applied raw mode still gets

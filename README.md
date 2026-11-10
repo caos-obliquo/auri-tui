@@ -110,12 +110,16 @@ auri export --preset harman --format apo | head -3
 # The interactive editor (no file = the neutral preset)
 auri tui
 auri tui curve.json --commit --yolo
+auri tui --ascii                     # plain ASCII, no Unicode glyphs
 ```
 
 ### The editor
 
 `auri tui` is a ratatui full-screen editor with a live gate verdict and the
-magnitude response drawn next to the band table.
+magnitude response drawn next to the band table. The screen is deliberately
+quiet: one accent colour, thin rules instead of boxes, letter-spaced section
+labels, gain bars beside every band and a node on the curve for every band.
+`auri tui --ascii` draws the same screen with plain ASCII only.
 
 | Key | Action |
 |---|---|

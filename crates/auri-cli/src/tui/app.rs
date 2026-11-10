@@ -173,6 +173,8 @@ pub struct App {
     pub quit: bool,
     /// The status line.
     pub status: String,
+    /// Whether the interface is drawn with plain ASCII instead of Unicode.
+    pub ascii: bool,
     /// The live verdict, recomputed after every edit.
     pub verdict: GateResult,
     /// Which pane owns `j`/`k` and `Space`.
@@ -261,6 +263,7 @@ impl App {
             armed: false,
             quit: false,
             status: String::new(),
+            ascii: false,
             verdict: placeholder,
             focus: Focus::Bands,
             confirm_row: 0,
