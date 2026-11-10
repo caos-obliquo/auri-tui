@@ -3,12 +3,13 @@
 Concise entry point for a fresh session. The full milestone spec and history
 live in `TODO.md`; this file is the map, the invariants, and the current state.
 
-**Status (2026-11-09):** M0–M6 done, official presets done, panic hardening
+**Status (2026-11-10):** M0–M6 done, official presets done, panic hardening
 done, `show --preset`, TUI `{`/`}` preset cycling with `[RO]`, `auri export`
 (apo/pipewire) done, and the flash-spacing deadlock fixed (see below). On
-`main` at `003db88`; `chore/m6-packaging` merged and deleted. Workspace: 143
+`main`; `chore/m6-packaging` merged and deleted. Workspace: 144
 tests green, `cargo clippy --workspace --all-targets -- -D warnings` clean,
-`cargo fmt` applied. `v0.1.1` released (contains the fix).
+`cargo fmt` applied. `v0.1.2` released; the bot has since bumped `main` to
+`0.1.3` for the next release.
 
 ## What this is
 
@@ -56,7 +57,7 @@ Data flow: `CurveFile` → `encode_reports` → 9×31-byte reports + commit repo
 ## Verify
 
 ```sh
-cargo test --workspace                 # 130 tests
+cargo test --workspace                 # 144 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cargo build --release
@@ -64,8 +65,11 @@ target/release/auri presets            # 12 rows, official CRCs
 ldd target/release/auri                # libudev.so.1 (glibc baseline)
 ```
 
-The cable is not plugged in on this machine: `auri devices` reports
-`no cable found (3302:8902)`. Hardware writes are untested here.
+The cable is plugged in on this machine: `auri devices` reports
+`Kuba Auri | serial 33028902260831 | Usb 3302:8902`. Every official curve
+has been written to it through a gated `--commit` — the CRC on the wire
+matches the official one for all 12 presets, and the journal records every
+write as `status:"ok"`.
 
 ## Licensing / provenance
 
@@ -102,6 +106,8 @@ drives a failing sink instead of the real device.
 ## Next steps (not started)
 
 1. Optional: fully static musl build — blocked on static eudev/libudev.
-2. Backlog and open questions: `TODO.md` §7.
-3. A simpler pipemixer-style TUI has been requested (one list, vim motions);
+2. Optional: a REA crash-surface report over the release binary
+   (`tools.rea.analyze_function` on the panic entry points).
+3. Backlog and open questions: `TODO.md` §7.
+4. A simpler pipemixer-style TUI has been requested (one list, vim motions);
    no plan yet.

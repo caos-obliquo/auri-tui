@@ -142,7 +142,7 @@ fn bands(frame: &mut Frame, app: &App, area: Rect) {
 
         spans.push(cell(
             if band.kind().has_gain() {
-                format!("{:+>8.1}dB ", band.gain_db())
+                format!("{:>+8.1}dB ", band.gain_db())
             } else {
                 "        — ".to_string()
             },
@@ -662,6 +662,40 @@ mod tests {
         let text = screen(&App::neutral(false));
         assert!(text.contains("OFF"), "kind column: {text}");
         assert!(text.contains('—'), "empty columns use an em dash");
+    }
+
+    /// The gain column shows the sign it means to show.
+    ///
+    /// `{:+>8.1}` is a trap: Rust reads the fill character and the alignment
+    /// *before* the sign, so `+` became the fill and the sign was dropped —
+    /// a positive gain rendered as `+++++0.5` and a negative one as
+    /// `++++-0.5`. The sign flag has to come first: `{:>+8.1}`.
+    #[test]
+    fn the_gain_column_keeps_its_sign() {
+        let mut app = App::neutral(false);
+        app.handle_key(Key::Char('c')); // band 1 → PK
+        app.handle_key(Key::Char('l')); // kind → freq
+        app.handle_key(Key::Char('l')); // freq → gain
+        app.handle_key(Key::Char('+')); // +0.5 dB
+
+        let text = screen(&app);
+        assert!(text.contains("+0.5dB"), "the sign must survive: {text}");
+        assert!(
+            !text.contains("++++"),
+            "the fill must not be a row of plus signs: {text}"
+        );
+
+        app.handle_key(Key::Char('-'));
+        app.handle_key(Key::Char('-')); // -0.5 dB
+        let text = screen(&app);
+        assert!(
+            text.contains("-0.5dB"),
+            "a negative gain keeps its sign: {text}"
+        );
+        assert!(
+            !text.contains("++++"),
+            "the fill must not be a row of plus signs: {text}"
+        );
     }
 
     #[test]

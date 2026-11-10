@@ -59,7 +59,7 @@ tools/gen-presets.mjs         regenerates src/presets.rs from the reference cata
 ### Running things
 
 ```sh
-cargo test --workspace                 # 130 tests
+cargo test --workspace                 # 144 tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all                        # stable: warns about nightly-only options
 node tools/gen-gate-verdicts.mjs       # needs a sibling open-auri checkout
@@ -407,11 +407,13 @@ shipped `auri export --format apo|pipewire` (numbers only, host spellings).
   discretion of the user"*. This project uses **BSD-3-Clause**, so distributed
   binaries stay permissive; notice and copyright are in
   `THIRD_PARTY_NOTICES.md`. The `HidSink` trait still allows swapping backends.
-- **Hardware validated (2026-11-09)** — the cable is plugged in and a gated
-  `--commit` write of Neutro landed (`written to the cable. CRC 0x4fff`,
-  counters 1/1/1, journal `status:"ok"`). The flash-spacing deadlock that
-  blocked the first-ever commit is fixed in `main` (`003db88`) and shipped in
-  `v0.1.1`.
+- **Hardware validated (2026-11-10)** — the cable is plugged in and *every*
+  official curve has landed through a gated `--commit`: all 12 presets written
+  with their official CRC on the wire (`0x1970`, `0x85b8`, `0x14a9`, `0x932b`,
+  `0xbe4e`, `0x7ea6`, `0x836c`, `0xec19`, `0xc738`, `0x5c6a`, `0xb68e`,
+  `0x4fff`), 2 s spacing between writes, every journal entry `status:"ok"`.
+  The flash-spacing deadlock that blocked the first-ever commit is fixed in
+  `main` (`003db88`) and shipped in `v0.1.1`.
 - **`App::neutral()` is `#[cfg(test)]`** — the binary always starts from a
   `CurveFile`.
 - **Grid cache** — `CascadeScan` rebuilds the log grid every call (~0.8 ms).
