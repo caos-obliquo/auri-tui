@@ -1,32 +1,26 @@
-//! The real cable, through `hidapi`.
+//! The real cable, over `/dev/hidraw*`.
+
+use std::fs::File;
 
 use auri_codec::{USB_PID, USB_VID};
 
 use crate::HidSink;
+use crate::hidraw::{self, DeviceInfo};
 use crate::writer::TransportError;
 
 /// A handle on the physical cable.
 pub struct RealHid {
-    device: hidapi::HidDevice,
+    device: File,
     label: String,
 }
 
-/// `VID:PID` of every cable this crate will talk to.
-fn matches(info: &hidapi::DeviceInfo) -> bool {
-    info.vendor_id() == USB_VID && info.product_id() == USB_PID
+/// The cables this crate will talk to.
+fn matches(info: &DeviceInfo) -> bool {
+    info.vendor_id == USB_VID && info.product_id == USB_PID
 }
 
-fn describe(info: &hidapi::DeviceInfo) -> String {
-    format!(
-        "{} | serial {} | {:?} {:04x}:{:04x} | usage page 0x{:04x} interface {}",
-        info.product_string().unwrap_or("unknown"),
-        info.serial_number().unwrap_or("-"),
-        info.bus_type(),
-        info.vendor_id(),
-        info.product_id(),
-        info.usage_page(),
-        info.interface_number()
-    )
+fn describe(info: &DeviceInfo) -> String {
+    info.label()
 }
 
 impl RealHid {
@@ -38,33 +32,25 @@ impl RealHid {
     /// rules do not let this user open it), and [`TransportError::Open`] when
     /// the open itself fails.
     pub fn open() -> Result<Self, TransportError> {
-        let api = hidapi::HidApi::new().map_err(|error| TransportError::Open {
-            message: error.to_string(),
-        })?;
-        let info = api
-            .device_list()
-            .find(|info| matches(info))
+        let info = hidraw::enumerate()?
+            .into_iter()
+            .find(matches)
             .ok_or(TransportError::NoDevice)?;
-        let label = describe(info);
-        let device = api
-            .open_path(info.path())
-            .map_err(|error| TransportError::Open {
-                message: error.to_string(),
-            })?;
-        Ok(RealHid { device, label })
+        let device = hidraw::open(&info.node)?;
+        Ok(RealHid {
+            device,
+            label: describe(&info),
+        })
     }
 
     /// Lists every cable present, without opening any of them.
     ///
     /// # Errors
     ///
-    /// [`TransportError::Open`] when the HID API cannot start.
+    /// [`TransportError::Open`] when the backend cannot start.
     pub fn list() -> Result<Vec<String>, TransportError> {
-        let api = hidapi::HidApi::new().map_err(|error| TransportError::Open {
-            message: error.to_string(),
-        })?;
-        Ok(api
-            .device_list()
+        Ok(hidraw::enumerate()?
+            .iter()
             .filter(|info| matches(info))
             .map(describe)
             .collect())
@@ -77,17 +63,6 @@ impl HidSink for RealHid {
     }
 
     fn write(&mut self, bytes: &[u8]) -> Result<(), TransportError> {
-        let written = self
-            .device
-            .write(bytes)
-            .map_err(|error| TransportError::Write {
-                message: error.to_string(),
-            })?;
-        if written != bytes.len() {
-            return Err(TransportError::Write {
-                message: format!("short write: {written} of {} bytes", bytes.len()),
-            });
-        }
-        Ok(())
+        hidraw::write(&mut self.device, bytes)
     }
 }

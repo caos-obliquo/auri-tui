@@ -3,6 +3,10 @@
 The cable's HID endpoint (`/dev/hidraw*`) is root-only by default. Without a
 rule, both `auri` and Chromium/WebHID fail to open it as a normal user.
 
+The rules are about **file permissions**, not about linking: `auri` talks to
+`/dev/hidraw*` directly, so a static musl build needs them exactly as much as
+the glibc one does.
+
 ## Install
 
 ```sh

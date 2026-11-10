@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The HID transport no longer links `libudev`: the cable is found and opened
+  through `/dev/hidraw*` and sysfs, in safe Rust. `cargo build --release
+  --target x86_64-unknown-linux-musl` now produces a fully static binary
+  (`ldd` reports `statically linked`), and the release publishes it next to
+  the glibc one. The device label the journal records is unchanged.
+
 ### Added
 
 - `auri-codec`: byte-exact `0xCB` wire codec — RBJ/AutoEq biquads, Q23/Q27

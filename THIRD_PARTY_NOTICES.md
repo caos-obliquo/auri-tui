@@ -40,15 +40,8 @@ AutoEq's arithmetic order and its negated feedback-coefficient convention.
 Low-pass and high-pass design follow the Audio EQ Cookbook directly (AutoEq
 has no such filters).
 
-## hidapi — BSD-3-Clause (chosen)
+## No native libraries
 
-<https://github.com/libusb/hidapi> — linked as a native library by the
-`hidapi` Rust crate. HIDAPI is tri-licensed and states that *"the license
-chosen is at the discretion of the user of HIDAPI"*: GPL-3.0, BSD-3-Clause, or
-the original HIDAPI license. This project uses it under **BSD-3-Clause**, so
-distributed binaries stay permissive.
-
-Copyright (c) 2010, Alan Ott, Signal 11 Software. All rights reserved.
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the BSD-3-Clause conditions are met
-(the full text ships with the `hidapi` crate as `LICENSE-bsd.txt`).
+The HID transport is written against the Linux `hidraw` interface directly, in
+safe Rust. There is no C dependency left to license, so the binary links
+statically and ships without `libudev`.

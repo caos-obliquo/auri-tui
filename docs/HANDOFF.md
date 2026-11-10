@@ -62,7 +62,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all
 cargo build --release
 target/release/auri presets            # 12 rows, official CRCs
-ldd target/release/auri                # libudev.so.1 (glibc baseline)
+cargo build --release --target x86_64-unknown-linux-musl
+ldd target/x86_64-unknown-linux-musl/release/auri   # statically linked
 ```
 
 The cable is plugged in on this machine: `auri devices` reports
@@ -105,9 +106,8 @@ drives a failing sink instead of the real device.
 
 ## Next steps (not started)
 
-1. Optional: fully static musl build — blocked on static eudev/libudev.
-2. Optional: a REA crash-surface report over the release binary
+1. Optional: a REA crash-surface report over the release binary
    (`tools.rea.analyze_function` on the panic entry points).
-3. Backlog and open questions: `TODO.md` §7.
-4. A simpler pipemixer-style TUI has been requested (one list, vim motions);
+2. Backlog and open questions: `TODO.md` §7.
+3. A simpler pipemixer-style TUI has been requested (one list, vim motions);
    no plan yet.

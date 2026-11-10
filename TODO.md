@@ -40,7 +40,8 @@ crates/auri-policy    pre-write policy (M5)
   src/store.rs         private (0600) XDG file helpers
 
 crates/auri-transport  HID transport
-  src/real.rs          RealHid::open()/list() via hidapi
+  src/hidraw.rs        Linux /dev/hidraw* backend (sysfs, no libudev)
+  src/real.rs          RealHid::open()/list() over the hidraw backend
   src/fake.rs          RecordingHid
   src/writer.rs        CurveWriter, REPORT_GAP_MS=16, SETTLE_MS=150, WRITE_SPACING_MS=2000
   tests/transport.rs   replays the real 2026-10-28 hardware capture (130 frames)
@@ -386,9 +387,10 @@ shipped `auri export --format apo|pipewire` (numbers only, host spellings).
 - [x] **udev docs** — `docs/udev.md` covers installation, verification
   (`ls -l /dev/hidraw*`, `auri devices`), the Chromium/WebHID failure mode, and
   the `mi_00` audio / `mi_03` HID split (PipeWire/ALSA never conflict).
-- [x] **Static build** — documented glibc `cargo build --release` + `ldd`
-  baseline. `libudev` links dynamically even with `linux-static-hidraw`, so a
-  fully static musl binary needs a static eudev; deferred.
+- [x] **Static build** — the HID transport is pure Rust over `/dev/hidraw*`,
+  so there is no `libudev` left to link: `cargo build --release --target
+  x86_64-unknown-linux-musl` produces a `static-pie` binary and `ldd` reports
+  `statically linked`. The release publishes it next to the glibc one.
 - [x] **`release.yml`** — `.github/workflows/release.yml`, modeled on youtui:
   version from `crates/auri-cli/Cargo.toml`, tag check at HEAD, `GH_PAT` with
   a `github.token` fallback, GitHub release with the binary, LICENSE and
@@ -402,11 +404,9 @@ shipped `auri export --format apo|pipewire` (numbers only, host spellings).
 ## 7. Backlog / known gaps
 
 - **`just` not installed locally** — recipes exist, run `cargo` directly.
-- **hidapi licensing — resolved** — hidapi is tri-licensed (GPL-3.0,
-  BSD-3-Clause, or the original) and states that *"the license chosen is at the
-  discretion of the user"*. This project uses **BSD-3-Clause**, so distributed
-  binaries stay permissive; notice and copyright are in
-  `THIRD_PARTY_NOTICES.md`. The `HidSink` trait still allows swapping backends.
+- **No native libraries left** — the HID transport reads sysfs and writes
+  `/dev/hidraw*` in safe Rust, so there is no C dependency to license and the
+  binary links statically. The `HidSink` trait still allows swapping backends.
 - **Hardware validated (2026-11-10)** — the cable is plugged in and *every*
   official curve has landed through a gated `--commit`: all 12 presets written
   with their official CRC on the wire (`0x1970`, `0x85b8`, `0x14a9`, `0x932b`,

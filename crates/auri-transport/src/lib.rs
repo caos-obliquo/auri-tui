@@ -2,7 +2,7 @@
 //!
 //! Three interchangeable sinks behind one trait:
 //!
-//! - [`RealHid`] — the actual cable, via `hidapi`.
+//! - [`RealHid`] — the actual cable, over `/dev/hidraw*`.
 //! - [`RecordingHid`] — a fake that only records what it was given; used by
 //!   tests and by `--dry-run`, the default everywhere.
 //!
@@ -16,6 +16,7 @@
 //!   previous preset.
 
 mod fake;
+pub mod hidraw;
 mod real;
 mod writer;
 

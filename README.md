@@ -57,9 +57,10 @@ cargo build --release
 ```
 
 Prebuilt Linux binaries are attached to
-[releases](https://github.com/caos-obliquo/auri-tui/releases). The binary links
-`libudev` at runtime (hidapi enumerates hidraw through udev); every systemd
-distribution has it.
+[releases](https://github.com/caos-obliquo/auri-tui/releases): a glibc build
+and a fully static musl build (`ldd` reports `statically linked`). The HID
+transport is pure Rust over `/dev/hidraw*`, so there is no `libudev` to
+install.
 
 ### udev rules (Linux)
 
