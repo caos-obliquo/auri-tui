@@ -19,7 +19,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   through `/dev/hidraw*` and sysfs, in safe Rust. `cargo build --release
   --target x86_64-unknown-linux-musl` now produces a fully static binary
   (`ldd` reports `statically linked`), and the release publishes it next to
-  the glibc one. The device label the journal records is unchanged.
+  the glibc one as `auri-linux-x86_64-musl`. The device label the journal
+  records is unchanged.
 
 ### Added
 

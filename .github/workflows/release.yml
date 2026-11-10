@@ -51,6 +51,14 @@ jobs:
       - name: Build the static musl binary
         run: cargo build --release --package auri-cli --target x86_64-unknown-linux-musl
 
+      - name: Name the release binaries
+        run: |
+          # Both builds are called `auri`; the release would publish the
+          # second one over the first. Give each its own name.
+          cp target/release/auri target/release/auri-linux-x86_64
+          cp target/x86_64-unknown-linux-musl/release/auri \
+             target/release/auri-linux-x86_64-musl
+
       - name: Compose the release notes
         env:
           TAG: v${{ steps.version.outputs.current }}
@@ -67,6 +75,11 @@ jobs:
             else
               git log --oneline --no-merges | sed 's/^/- /'
             fi
+            echo
+            echo "### Binaries"
+            echo
+            echo "- \`auri-linux-x86_64\`: glibc build"
+            echo "- \`auri-linux-x86_64-musl\`: fully static build (\`ldd\` reports \`statically linked\`)"
           } > release_body.md
 
       - name: Publish the GitHub release
@@ -76,8 +89,8 @@ jobs:
           name: v${{ steps.version.outputs.current }}
           body_path: release_body.md
           files: |
-            target/release/auri
-            target/x86_64-unknown-linux-musl/release/auri
+            target/release/auri-linux-x86_64
+            target/release/auri-linux-x86_64-musl
             LICENSE
             THIRD_PARTY_NOTICES.md
 

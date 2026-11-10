@@ -57,10 +57,10 @@ cargo build --release
 ```
 
 Prebuilt Linux binaries are attached to
-[releases](https://github.com/caos-obliquo/auri-tui/releases): a glibc build
-and a fully static musl build (`ldd` reports `statically linked`). The HID
-transport is pure Rust over `/dev/hidraw*`, so there is no `libudev` to
-install.
+[releases](https://github.com/caos-obliquo/auri-tui/releases): `auri-linux-x86_64`
+(the glibc build) and `auri-linux-x86_64-musl` (fully static, `ldd` reports
+`statically linked`). The HID transport is pure Rust over `/dev/hidraw*`, so
+there is no `libudev` to install.
 
 ### udev rules (Linux)
 
