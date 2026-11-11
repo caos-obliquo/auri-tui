@@ -51,6 +51,40 @@ const KEY_HINTS: &str = "hjkl move · L log · +- step · c kind · x off · { }
 /// The keys of the journal log, in the order they matter.
 const LOG_KEY_HINTS: &str = "j/k scroll · g top · G bottom · Esc or q close";
 
+/// The keys of the help page, in the order they matter.
+const HELP_KEY_HINTS: &str = "Esc, q or ? close";
+
+/// The width of the key column on the help page, in cells.
+const HELP_KEY_COL: usize = 18;
+
+/// The width of the context column on the help page, in cells.
+const HELP_CONTEXT_COL: usize = 12;
+
+/// The help page: every key the editor understands, one row each.
+///
+/// `key` is what you press, `context` is where it works, `command` is what
+/// it does. Order follows the table's own columns.
+const HELP_ROWS: &[(&str, &str, &str)] = &[
+    ("h j k l, arrows", "bands", "walk columns, walk bands"),
+    ("j, k", "checklist", "walk the confirmations"),
+    ("Space", "checklist", "tick the focused item"),
+    ("Tab", "all", "focus: bands / checklist"),
+    ("g / G", "table", "first / last band"),
+    ("+ = / -", "value", "step the curve value"),
+    ("c", "kind", "cycle filter kind"),
+    ("x", "band", "set the band off"),
+    ("t", "profile", "toggle standard / yolo"),
+    ("e", "layer", "toggle ajustar / engineering"),
+    ("{ / }", "preset", "previous / next preset"),
+    ("n", "curve", "load Neutro"),
+    ("r", "curve", "restore the curve at launch"),
+    ("w / Enter", "write", "arm; press again to write"),
+    ("Esc", "write", "cancel an arm, close overlays"),
+    ("L", "journal", "open the journal log"),
+    ("?", "help", "this page"),
+    ("q", "quit", "quit the editor"),
+];
+
 /// The width of the timestamp column, in cells (`YYYY-MM-DD HH:MM:SS`).
 const LOG_TIME_WIDTH: usize = 19;
 
@@ -79,6 +113,22 @@ pub fn render(frame: &mut Frame, app: &App) {
             .split(area);
         header(frame, app, rows[0], &icons, &theme);
         render_log(frame, app, rows[1], &icons, &theme);
+        footer(frame, app, rows[2], &theme);
+        return;
+    }
+
+    // The help page takes over the page the same way: read-only, one screen.
+    if app.help_open {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(2),
+                Constraint::Min(6),
+                Constraint::Length(2),
+            ])
+            .split(area);
+        header(frame, app, rows[0], &icons, &theme);
+        render_help(frame, rows[1], &theme);
         footer(frame, app, rows[2], &theme);
         return;
     }
@@ -281,6 +331,90 @@ fn render_log(frame: &mut Frame, app: &App, area: Rect, icons: &Icons, theme: &T
             ..area
         },
     );
+}
+
+/// The help page: every key the editor understands, one page.
+///
+/// It is read-only by construction: it shows the bindings and writes nothing,
+/// ever.
+fn render_help(frame: &mut Frame, area: Rect, theme: &Theme) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+    let label = Line::from(vec![
+        Span::styled("?", theme.accent_style()),
+        Span::styled(" H E L P", theme.label_style()),
+        Span::styled(
+            " · every key the editor understands",
+            theme.structure_style(),
+        ),
+    ]);
+    frame.render_widget(Paragraph::new(label), Rect { height: 1, ..area });
+    if area.height < 2 {
+        return;
+    }
+    frame.render_widget(
+        Paragraph::new(help_header(theme)),
+        Rect {
+            y: area.y + 1,
+            height: 1,
+            ..area
+        },
+    );
+    if area.height < 3 {
+        return;
+    }
+
+    let rows = area.height.saturating_sub(2) as usize;
+    let lines: Vec<Line<'static>> = HELP_ROWS
+        .iter()
+        .take(rows)
+        .map(|(key, context, command)| help_row(key, context, command, theme))
+        .collect();
+    frame.render_widget(
+        Paragraph::new(lines),
+        Rect {
+            y: area.y + 2,
+            height: rows as u16,
+            ..area
+        },
+    );
+}
+
+/// The column headings of the help page.
+fn help_header(theme: &Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<key$}", "KEY", key = HELP_KEY_COL),
+            theme.structure_style(),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<context$}", "CONTEXT", context = HELP_CONTEXT_COL),
+            theme.structure_style(),
+        ),
+        Span::raw("  "),
+        Span::styled("COMMAND", theme.structure_style()),
+    ])
+}
+
+/// One row of the help page.
+fn help_row(key: &str, context: &str, command: &str, theme: &Theme) -> Line<'static> {
+    Line::from(vec![
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<key$}", key, key = HELP_KEY_COL),
+            theme.accent_style(),
+        ),
+        Span::raw("  "),
+        Span::styled(
+            format!("{:<context$}", context, context = HELP_CONTEXT_COL),
+            theme.structure_style(),
+        ),
+        Span::raw("  "),
+        Span::styled(command.to_string(), theme.text_style()),
+    ])
 }
 
 /// The column headings of the journal log.
@@ -1030,9 +1164,11 @@ fn footer(frame: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     if area.height < 2 {
         return;
     }
-    // The log overlay has its own keys: the editor's are not its own.
+    // The overlays have their own keys: the editor's are not theirs.
     let hints = if app.log_open {
         LOG_KEY_HINTS
+    } else if app.help_open {
+        HELP_KEY_HINTS
     } else {
         KEY_HINTS
     };
@@ -1544,6 +1680,56 @@ mod tests {
         assert_eq!(app.log_scroll, 38);
         app.handle_key(Key::Char('g'));
         assert_eq!(app.log_scroll, 0);
+    }
+
+    /// An editor with the help overlay open.
+    fn with_help() -> App {
+        let mut app = App::neutral(false);
+        app.help_open = true;
+        app
+    }
+
+    #[test]
+    fn a_help_page_renders_every_editor_key() {
+        let text = screen(&with_help());
+
+        assert!(text.contains("H E L P"), "the page names itself: {text}");
+        assert!(text.contains("KEY"), "the header row: {text}");
+        assert!(text.contains("CONTEXT"), "the header row: {text}");
+        assert!(text.contains("COMMAND"), "the header row: {text}");
+        assert!(text.contains("Tab"), "focus is documented: {text}");
+        assert!(
+            text.contains("Neutro"),
+            "curve actions are documented: {text}"
+        );
+        assert!(
+            text.contains("write"),
+            "the write gesture is documented: {text}"
+        );
+        assert!(
+            text.contains("Esc, q or ? close"),
+            "the footer carries the help keys: {text}"
+        );
+    }
+
+    #[test]
+    fn the_help_page_takes_over_the_page() {
+        let text = screen(&with_help());
+        assert!(
+            !text.contains("R E S P O N S E"),
+            "the plot is gone: {text}"
+        );
+        assert!(!text.contains("gate:"), "the verdict is gone: {text}");
+        assert!(text.contains("kuba auri"), "the header stays: {text}");
+    }
+
+    #[test]
+    fn rendering_the_help_never_panics_on_a_tiny_terminal() {
+        let mut terminal = Terminal::new(TestBackend::new(10, 6)).expect("test backend");
+        let app = with_help();
+        terminal
+            .draw(|frame| render(frame, &app))
+            .expect("small frame");
     }
 
     #[test]

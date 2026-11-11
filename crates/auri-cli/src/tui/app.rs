@@ -203,6 +203,8 @@ pub struct App {
     pub log_scroll: u16,
     /// The journal entries the log overlay shows.
     pub log_entries: Vec<JournalEntry>,
+    /// Whether the read-only help overlay is open.
+    pub help_open: bool,
     /// The session's clock and state files.
     pub env: SessionEnv,
 }
@@ -283,6 +285,7 @@ impl App {
             now_ms: env.now_ms,
             target: "dry-run".to_string(),
             log_open: false,
+            help_open: false,
             log_scroll: 0,
             log_entries: Vec::new(),
             env,
@@ -515,6 +518,16 @@ impl App {
         self.log_scroll = u16::try_from(last).unwrap_or(u16::MAX);
     }
 
+    /// Opens the help overlay: every key the editor understands, one page.
+    pub fn open_help(&mut self) {
+        self.help_open = true;
+    }
+
+    /// Closes the help overlay. The editor underneath is exactly as it was.
+    pub fn close_help(&mut self) {
+        self.help_open = false;
+    }
+
     /// Handles one key while the log overlay is open.
     ///
     /// The overlay owns the keyboard: it scrolls and it closes, and every
@@ -546,12 +559,32 @@ impl App {
         }
     }
 
+    /// Handles one key while the help overlay is open.
+    ///
+    /// The overlay owns the keyboard while it is open: it closes, and every
+    /// other key is ignored — so nothing can be edited, armed or written
+    /// from inside the help.
+    pub fn handle_help_key(&mut self, key: Key) -> Effect {
+        match key {
+            Key::Esc | Key::Char('q') | Key::Char('?') => {
+                self.close_help();
+                Effect::Nothing
+            }
+            _ => Effect::Nothing,
+        }
+    }
+
     /// Handles one key and reports what the runner must do next.
     pub fn handle_key(&mut self, key: Key) -> Effect {
         // The log overlay owns the keyboard while it is open: no editor key
         // can reach the arm or the write path from there.
         if self.log_open {
             return self.handle_log_key(key);
+        }
+        // The help overlay owns the keyboard while it is open: no editor key
+        // can reach the arm or the write path from there.
+        if self.help_open {
+            return self.handle_help_key(key);
         }
         match key {
             Key::Char('q') => {
@@ -709,8 +742,7 @@ impl App {
                 Effect::Nothing
             }
             Key::Char('?') => {
-                self.status = "hjkl move · +/- step · c kind · x off · { } preset · t yolo · e layer · Tab focus · Space tick · L log · w write · q quit"
-                    .to_string();
+                self.open_help();
                 Effect::Nothing
             }
             _ => Effect::Nothing,
@@ -1491,6 +1523,47 @@ mod tests {
             assert_eq!(app.handle_key(key), Effect::Nothing);
         }
         assert_eq!(app.log_scroll, 0, "an empty log has nowhere to scroll");
+    }
+
+    #[test]
+    fn the_help_owns_the_keyboard_and_never_touches_the_curve() {
+        let mut app = ready(false);
+        let bands = app.bands.clone();
+        let preamp = app.preamp_db;
+        let profile = app.profile;
+        let status = app.status.clone();
+
+        app.handle_key(Key::Char('?'));
+        assert!(app.help_open, "? opens the help");
+
+        // Nothing the editor does may happen from inside the help.
+        assert_eq!(app.handle_key(Key::Char('w')), Effect::Nothing);
+        assert!(!app.armed, "the help must never arm a write");
+        assert_eq!(app.handle_key(Key::Char('x')), Effect::Nothing);
+        assert_eq!(app.handle_key(Key::Char('t')), Effect::Nothing);
+        assert_eq!(app.bands, bands, "the help must not edit the curve");
+        assert_eq!(app.preamp_db, preamp, "the help must not step the preamp");
+        assert_eq!(app.profile, profile, "the help must not switch profiles");
+
+        // `q` closes the help; it never quits the editor from inside it.
+        assert_eq!(app.handle_key(Key::Char('q')), Effect::Nothing);
+        assert!(!app.help_open, "q closes the help");
+        assert!(!app.quit, "closing the help is not quitting the editor");
+
+        // Esc closes it too, and `?` toggles it.
+        app.handle_key(Key::Char('?'));
+        assert!(app.help_open);
+        assert_eq!(app.handle_key(Key::Esc), Effect::Nothing);
+        assert!(!app.help_open, "Esc closes the help");
+        assert!(!app.quit);
+        app.handle_key(Key::Char('?'));
+        assert_eq!(app.handle_key(Key::Char('?')), Effect::Nothing);
+        assert!(!app.help_open, "? closes the help again");
+
+        // The editor underneath is exactly as it was.
+        assert_eq!(app.bands, bands);
+        assert_eq!(app.preamp_db, preamp);
+        assert_eq!(app.status, status, "the status line is untouched");
     }
 
     #[test]

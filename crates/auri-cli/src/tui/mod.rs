@@ -80,8 +80,9 @@ fn event_loop(terminal: &mut DefaultTerminal, app: &mut App, commit: bool) -> Re
             continue;
         }
 
-        // The log overlay owns the keyboard while it is open: no editor key
-        // can reach the arm or the write path from there.
+        // The overlays own the keyboard while one is open: no editor key
+        // can reach the arm or the write path from there. The help overlay
+        // routes inside handle_key; the log overlay has its own handler.
         let key = decode(raw);
         let effect = if app.log_open {
             app.handle_log_key(key)
