@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-11
+
 ### Changed
 
 - The TUI was re-skinned: one accent colour (`Color::Indexed(208)`) for the

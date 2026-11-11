@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "auri-cli"
-version = "0.1.8"
+version = "1.0.0"
 dependencies = [
  "auri-codec",
  "auri-gate",
