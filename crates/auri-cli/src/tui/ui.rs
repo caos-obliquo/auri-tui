@@ -13,7 +13,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Borders, Paragraph};
 
 use crate::presets;
 use crate::tui::app::{App, Col, Focus};
@@ -338,7 +338,15 @@ fn render_log(frame: &mut Frame, app: &App, area: Rect, icons: &Icons, theme: &T
 /// It is read-only by construction: it shows the bindings and writes nothing,
 /// ever.
 fn render_help(frame: &mut Frame, area: Rect, theme: &Theme) {
-    if area.width == 0 || area.height == 0 {
+    if area.width < 2 || area.height < 2 {
+        return;
+    }
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(theme.structure_style());
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    if inner.width == 0 || inner.height == 0 {
         return;
     }
     let label = Line::from(vec![
@@ -349,23 +357,23 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &Theme) {
             theme.structure_style(),
         ),
     ]);
-    frame.render_widget(Paragraph::new(label), Rect { height: 1, ..area });
-    if area.height < 2 {
+    frame.render_widget(Paragraph::new(label), Rect { height: 1, ..inner });
+    if inner.height < 2 {
         return;
     }
     frame.render_widget(
         Paragraph::new(help_header(theme)),
         Rect {
-            y: area.y + 1,
+            y: inner.y + 1,
             height: 1,
-            ..area
+            ..inner
         },
     );
-    if area.height < 3 {
+    if inner.height < 3 {
         return;
     }
 
-    let rows = area.height.saturating_sub(2) as usize;
+    let rows = inner.height.saturating_sub(2) as usize;
     let lines: Vec<Line<'static>> = HELP_ROWS
         .iter()
         .take(rows)
@@ -374,9 +382,9 @@ fn render_help(frame: &mut Frame, area: Rect, theme: &Theme) {
     frame.render_widget(
         Paragraph::new(lines),
         Rect {
-            y: area.y + 2,
+            y: inner.y + 2,
             height: rows as u16,
-            ..area
+            ..inner
         },
     );
 }
