@@ -11,7 +11,7 @@ the glibc one does.
 
 ```sh
 sudo tee /etc/udev/rules.d/99-kuba-auri.rules >/dev/null <<'EOF'
-# Generic USB permission (libusb / hidapi backends)
+# Generic USB permission (hidraw backends)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="3302", ATTRS{idProduct}=="8902", MODE="0666", TAG+="uaccess"
 # HID raw node — where the write actually lands
 KERNEL=="hidraw*", ATTRS{idVendor}=="3302", ATTRS{idProduct}=="8902", MODE="0666", TAG+="uaccess"

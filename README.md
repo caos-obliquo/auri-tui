@@ -20,7 +20,7 @@ Independent implementation. **Not a fork** of
 | `auri-codec` | Byte-exact `0xCB` wire codec: RBJ/AutoEq biquads → Q23/Q27 words → CRC-16 → 9 reports |
 | `auri-gate` | Safety gate v2: the observed envelope of the 11 official presets, verdict before any write |
 | `auri-policy` | Pre-write policy: flash counters and 2 s spacing, loudness warning, JSONL journal, checklist |
-| `auri-transport` | HID transport: real cable (`hidapi`), recording fake, dry-run writer |
+| `auri-transport` | HID transport: real cable (`/dev/hidraw`), recording fake, dry-run writer |
 | `auri-cli` | The `auri` binary: `devices`, `presets`, `show`, `export`, `write`, `neutral`, `tui` |
 
 ## Safety invariants
@@ -69,7 +69,7 @@ with a normal user:
 
 ```sh
 sudo tee /etc/udev/rules.d/99-kuba-auri.rules >/dev/null <<'EOF'
-# Generic USB permission (libusb / hidapi backends)
+# Generic USB permission (hidraw backends)
 SUBSYSTEMS=="usb", ATTRS{idVendor}=="3302", ATTRS{idProduct}=="8902", MODE="0666", TAG+="uaccess"
 # HID raw node — where the write actually lands
 KERNEL=="hidraw*", ATTRS{idVendor}=="3302", ATTRS{idProduct}=="8902", MODE="0666", TAG+="uaccess"
@@ -117,8 +117,9 @@ auri tui --ascii                     # plain ASCII, no Unicode glyphs
 
 `auri tui` is a ratatui full-screen editor with a live gate verdict and the
 magnitude response drawn next to the band table. The screen is deliberately
-quiet: one accent colour, thin rules instead of boxes, letter-spaced section
-labels, gain bars beside every band and a node on the curve for every band.
+quiet: one accent colour, thin rules instead of boxes (the read-only help page
+is the one deliberate exception), letter-spaced section labels, gain bars
+beside every band and a node on the curve for every band.
 `auri tui --ascii` draws the same screen with plain ASCII only.
 
 | Key | Action |
@@ -138,10 +139,10 @@ labels, gain bars beside every band and a node on the curve for every band.
 | `Space` | tick the focused confirmation |
 | `w` / `Enter` | arm, then write — twice, always |
 | `Esc` | cancel an armed write (or quit) |
-| `?` `q` | help / quit |
+| `?` | open the read-only help page — it never touches the curve |
+| `q` | quit the editor |
 
-While the checklist has focus, `j`/`k` walk its rows and `Space` ticks them;
-the write stays locked until every required item is ticked. Editing anything
+While the checklist has focus, `j`/`k` walk its rows and `Space` ticks them. The write stays locked until every required item is ticked. The help page closes with `Esc`, `q` or `?`. Editing anything
 disarms a pending write; moving the cursor does not. `w` runs
 the gate first: a refused curve never arms, and without `--commit` it stops at a
 dry-run report of the nine frames and their CRC. Nothing is ever retried.
@@ -192,12 +193,13 @@ Current status:
   the −0.5 dB preamp the official Neutro preset uses (CRC `0x4fff`).
 - **M4** — the interactive editor: vim motions, a live re-evaluated verdict, a
   braille response plot built from the same quantised Q27 words the wire
-  carries, and an arm-then-write flow that can never send unreviewed bytes.
+  carries, an arm-then-write flow that can never send unreviewed bytes, and the
+  read-only journal log (`L`) and `?` help page.
 - **M5** — flash journal and the pre-write checklist: 2 s spacing, counters, a
   loudness-jump warning, ticked confirmations, and the invariant that a journal
   failure never re-sends a write.
-- **M6** — packaging: udev documentation, a tag-and-release workflow, and the
-  licensing correction (hidapi under BSD-3-Clause, binaries stay permissive).
+- **M6** — packaging: udev documentation, a tag-and-release workflow, and a
+  fully static musl build (HID over hidraw in safe Rust; no native libraries).
 - **Post-release fix** — the flash-spacing anchor is now persisted before the
   spacing check, so the first-ever `--commit` can succeed (it previously
   deadlocked on `wait 2000 ms`). Validated on the real cable: `written to the
@@ -207,9 +209,8 @@ Current status:
 
 This repository is **MIT**.
 
-- **hidapi** is tri-licensed (GPL-3.0, BSD-3-Clause, or the original HIDAPI
-  license) and states that *"the license chosen is at the discretion of the
-  user"*. This project uses it under **BSD-3-Clause**, so distributed binaries
-  stay permissive. The notice and copyright are in `THIRD_PARTY_NOTICES.md`.
+- HID is opened through `/dev/hidraw*` and sysfs in safe Rust; there is no
+  native HID library linked, so there is no C dependency to license. The Rust
+  dependencies and their notices are in `THIRD_PARTY_NOTICES.md`.
 - The protocol documentation and test oracles come from **open-auri**
   (AGPL-3.0) and are referenced, not copied.

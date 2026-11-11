@@ -50,7 +50,7 @@ crates/auri-cli        the `auri` binary
   src/main.rs          devices | presets | show | write | neutral | tui
   src/curve.rs         curve.json loader
   src/presets.rs       the 11 official curves + Neutro (generated)
-  src/tui/{app,ui,plot,mod}.rs   ratatui editor (vim h/j/k/l)
+  src/tui/{app,ui,plot,mod,icons,theme}.rs   ratatui editor (vim h/j/k/l; read-only log and help views)
 
 tools/gen-gate-verdicts.mjs   regenerates the gate parity corpus from the JS oracle
 tools/gen-levels.mjs          regenerates the level_db parity corpus (M5.2)
@@ -60,7 +60,7 @@ tools/gen-presets.mjs         regenerates src/presets.rs from the reference cata
 ### Running things
 
 ```sh
-cargo test --workspace                 # 144 tests
+cargo test --workspace                 # workspace tests
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all                        # stable: warns about nightly-only options
 node tools/gen-gate-verdicts.mjs       # needs a sibling open-auri checkout

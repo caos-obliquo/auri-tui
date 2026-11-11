@@ -39,6 +39,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Interactive editor: vim motions, `{`/`}` preset cycling with a `[RO]`
   read-only marker (any edit clears it — and disarms), live gate verdict,
   braille response plot, arm-then-write, and the checklist (Tab/Space).
+- Read-only journal log (`L`) and help page (`?`): the help page lists every
+  binding in one `KEY | CONTEXT | COMMAND` page and closes with `Esc`, `q` or
+  `?`; it never arms, edits or writes.
 - `auri export --preset <id> --format apo|pipewire`: host spellings of a
   curve, offline, no cable involved.
 - `docs/udev.md`, a release workflow, and this changelog.
