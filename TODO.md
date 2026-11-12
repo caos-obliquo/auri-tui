@@ -47,8 +47,9 @@ crates/auri-transport  HID transport
   tests/transport.rs   replays the real 2026-10-28 hardware capture (130 frames)
 
 crates/auri-cli        the `auri` binary
-  src/main.rs          devices | presets | show | write | neutral | tui
-  src/curve.rs         curve.json loader
+  src/main.rs          devices | presets | show | export | autoeq | write | neutral | tui
+  src/curve.rs         curve.json loader and output serializer
+  src/autoeq.rs        AutoEq-style CSV measurement/target fit (PK/LS, 10 bands)
   src/presets.rs       the 11 official curves + Neutro (generated)
   src/tui/{app,ui,plot,mod,icons,theme}.rs   ratatui editor (vim h/j/k/l; read-only log and help views)
 
@@ -65,6 +66,7 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all                        # stable: warns about nightly-only options
 node tools/gen-gate-verdicts.mjs       # needs a sibling open-auri checkout
 cargo run -p auri-cli -- tui           # the editor
+cargo run -p auri-cli -- autoeq fit measurement.csv target.csv --output curve.json
 ```
 
 `just` is **not** installed on this machine; the `justfile` exists for CI/others.

@@ -4,6 +4,7 @@
 //! sent. `--commit` runs the safety gate first and writes only a curve the
 //! gate approves, because nothing reaches the cable without a gate.
 
+mod autoeq;
 mod curve;
 mod export;
 mod presets;
@@ -25,6 +26,27 @@ use clap::{Parser, Subcommand};
 use crate::curve::CurveFile;
 use crate::export::ExportFormat;
 
+/// Arguments shared by the AutoEq fit.
+#[derive(Debug, clap::Args)]
+struct FitArgs {
+    /// Two-column CSV: frequency in Hz, measured response in dB.
+    measurement: std::path::PathBuf,
+    /// Two-column CSV: frequency in Hz, target response in dB.
+    target: std::path::PathBuf,
+    /// Where to write the fitted curve.
+    #[arg(short, long, value_name = "PATH")]
+    output: std::path::PathBuf,
+    /// Judge under the yolo profile instead of standard.
+    #[arg(long)]
+    yolo: bool,
+}
+
+#[derive(Debug, Subcommand)]
+enum AutoEqCommand {
+    /// Fit an AutoEq-style measurement to a target and emit curve.json.
+    Fit(FitArgs),
+}
+
 /// Offline terminal control for the Kuba Auri (CB5100) DSP cable.
 #[derive(Debug, Parser)]
 #[command(name = "auri", version, about, long_about = None)]
@@ -37,6 +59,12 @@ struct Cli {
 enum Command {
     /// List the cables this user can open.
     Devices,
+    /// Fit an AutoEq-style measurement to a target curve.
+    #[command(name = "autoeq")]
+    AutoEq {
+        #[command(subcommand)]
+        command: AutoEqCommand,
+    },
     /// Show a curve as the nine reports and its safety verdict.
     Show {
         /// Path to a JSON curve file ({"preampDb": .., "eqBands": [..]}).
@@ -158,6 +186,33 @@ fn run() -> Result<(), String> {
                     out(format_args!("{entry}"));
                 }
             }
+            Ok(())
+        }
+        Command::AutoEq {
+            command:
+                AutoEqCommand::Fit(FitArgs {
+                    measurement,
+                    target,
+                    output,
+                    yolo,
+                }),
+        } => {
+            let result = autoeq::fit_files(&measurement, &target)?;
+            let verdict = judge(&result.curve, yolo);
+            print_verdict(&verdict, yolo);
+            if !verdict.ok {
+                return refused(&verdict);
+            }
+            autoeq::write_curve(&result.curve, &output)?;
+            out(format_args!(
+                "autoeq fit: {} points, RMS {:.2} dB (from {:.2} dB), max error {:.2} dB",
+                result.points, result.rms_after_db, result.rms_before_db, result.max_error_db
+            ));
+            out(format_args!("wrote {}", output.display()));
+            out(format_args!(
+                "not written to the cable; use `auri write {} --commit`",
+                output.display()
+            ));
             Ok(())
         }
         Command::Presets => {
