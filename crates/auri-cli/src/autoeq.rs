@@ -9,7 +9,7 @@
 use std::path::Path;
 
 use auri_codec::{Band, BandKind};
-use auri_gate::{quantized_section, section_analysis, section_db};
+use auri_gate::{quantized_preamp_db, quantized_section, section_analysis, section_db};
 
 use crate::curve::CurveFile;
 
@@ -458,6 +458,78 @@ fn peak_response_db(bands: &[Band], min_hz: f64, max_hz: f64) -> Result<f64, Str
     Ok(response.into_iter().fold(0.0, f64::max))
 }
 
+/// How the written curve compares to a target, with the chip's quantized math.
+///
+/// Both curves are compared after normalising at 1 kHz, matching how the fit
+/// treats the absolute level as the preamp's job, not a filter's: the
+/// preamp is an additive offset and is excluded from the shape comparison.
+#[derive(Debug)]
+pub struct CheckResult {
+    /// RMS deviation over the shared grid, in dB.
+    pub rms_db: f64,
+    /// Largest absolute deviation, in dB.
+    pub max_dev_db: f64,
+    /// Frequency of the largest deviation, in Hz.
+    ///
+    /// Indicative only: both curves are normalised at 1 kHz, so a concentrated
+    /// boost centered at 1 kHz is removed by construction and the reported
+    /// maximum moves elsewhere. Read the magnitude from `max_dev_db`, not the
+    /// location from `argmax_hz`.
+    pub argmax_hz: f64,
+    /// Preamp the chip will actually apply, in dB (Q23-quantized).
+    pub preamp_applied_db: f64,
+}
+
+/// Compares a curve's on-the-wire frequency-response shape against a
+/// two-column target CSV.
+///
+/// Uses the same quantized section math as the codec (`quantized_preamp_db` is
+/// reported for reference, then excluded; `quantized_section`/`section_db`), so
+/// the numbers reflect what the cable will apply. Both curves are normalised
+/// at 1 kHz exactly like [`fit_files`]: the absolute level is the preamp's
+/// job, not a filter's.
+///
+/// # Errors
+///
+/// Invalid curve, unreadable or malformed target CSV, or a band whose
+/// coefficients cannot be encoded.
+pub fn check_target(curve: &CurveFile, target: &Path) -> Result<CheckResult, String> {
+    curve.validate()?;
+    let target = read_response(target)?;
+    let grid = log_grid(MIN_FREQ_HZ, MAX_FREQ_HZ, GRID_POINTS);
+    let target_norm = normalise(
+        &grid,
+        &grid.iter().map(|&hz| interpolate(&target, hz)).collect::<Vec<_>>(),
+    );
+    let preamp_applied = quantized_preamp_db(curve.preamp_db).map_err(|e| format!("{e:?}"))?;
+    let mut response = vec![0.0_f64; grid.len()];
+    for band in curve.eq_bands.iter().copied() {
+        let part = response_at(&grid, band)?;
+        for (sample, value) in response.iter_mut().zip(&part) {
+            *sample += value;
+        }
+    }
+    let response = normalise(&grid, &response);
+
+    let mut argmax = 0usize;
+    let mut sum = 0.0_f64;
+    let mut max_dev = 0.0_f64;
+    for (index, (&value, &wanted)) in response.iter().zip(&target_norm).enumerate() {
+        let deviation = (value - wanted).abs();
+        sum += deviation * deviation;
+        if deviation > max_dev {
+            max_dev = deviation;
+            argmax = index;
+        }
+    }
+    Ok(CheckResult {
+        rms_db: (sum / grid.len() as f64).sqrt(),
+        max_dev_db: max_dev,
+        argmax_hz: grid[argmax],
+        preamp_applied_db: preamp_applied,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,6 +548,40 @@ mod tests {
         assert_eq!(points.len(), 3);
         assert_eq!(points[0].hz, 20.0);
         assert_eq!(points[1].db, -1.0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_target_on_a_flat_curve_reports_zero_deviation() {
+        let dir = std::env::temp_dir().join(format!("auri-autoeq-check-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("test dir");
+        let target = dir.join("target.csv");
+        write(&target, "20,0\n100,0\n1000,0\n10000,0\n20000,0\n");
+        let result = check_target(&CurveFile::neutral(), &target).expect("check");
+        assert!(result.max_dev_db < 1e-9, "{}", result.max_dev_db);
+        assert!(result.rms_db < 1e-9, "{}", result.rms_db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_target_flags_a_nine_db_boost_over_the_limit() {
+        let dir = std::env::temp_dir().join(format!("auri-autoeq-check-fail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("test dir");
+        let target = dir.join("target.csv");
+        write(&target, "20,0\n100,0\n1000,0\n10000,0\n20000,0\n");
+        let boosted = Band::Pk {
+            freq_hz: 1_000.0,
+            gain_db: 9.0,
+            q_factor: 1.0,
+        };
+        let mut eq_bands = vec![boosted];
+        eq_bands.resize(10, Band::Off);
+        let curve = CurveFile {
+            preamp_db: -0.5,
+            eq_bands,
+        };
+        let result = check_target(&curve, &target).expect("check");
+        assert!(result.max_dev_db > 5.0, "{}", result.max_dev_db);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

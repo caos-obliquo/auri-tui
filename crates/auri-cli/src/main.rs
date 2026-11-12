@@ -45,6 +45,21 @@ struct FitArgs {
 enum AutoEqCommand {
     /// Fit an AutoEq-style measurement to a target and emit curve.json.
     Fit(FitArgs),
+    /// Compare a curve's on-the-wire response against a target CSV.
+    Check(CheckArgs),
+}
+
+/// Arguments for `auri autoeq check`.
+#[derive(Debug, clap::Args)]
+struct CheckArgs {
+    /// Path to curve.json ({"preampDb": .., "eqBands": [..]}).
+    file: std::path::PathBuf,
+    /// Two-column CSV: frequency in Hz, target response in dB.
+    #[arg(long)]
+    target: std::path::PathBuf,
+    /// Fail when the largest deviation from the target exceeds this many dB.
+    #[arg(long, default_value = "1.0", value_name = "DB")]
+    max_db: f64,
 }
 
 /// Offline terminal control for the Kuba Auri (CB5100) DSP cable.
@@ -213,6 +228,24 @@ fn run() -> Result<(), String> {
                 "not written to the cable; use `auri write {} --commit`",
                 output.display()
             ));
+            Ok(())
+        }
+        Command::AutoEq {
+            command: AutoEqCommand::Check(CheckArgs { file, target, max_db }),
+        } => {
+            let curve = CurveFile::load(&file).map_err(|e| e.to_string())?;
+            let result = autoeq::check_target(&curve, &target)?;
+            out(format_args!(
+                "  check: max deviation {:.2} dB at {:.0} Hz, RMS {:.2} dB (both normalised at 1 kHz); preamp applies {:+.2} dB",
+                result.max_dev_db, result.argmax_hz, result.rms_db, result.preamp_applied_db
+            ));
+            if result.max_dev_db > max_db {
+                return Err(format!(
+                    "curve deviates from target by {:.2} dB (limit {:.2} dB)",
+                    result.max_dev_db, max_db
+                ));
+            }
+            out(format_args!("  check: PASS (max deviation <= {:.2} dB)", max_db));
             Ok(())
         }
         Command::Presets => {
