@@ -92,6 +92,9 @@ auri neutral
 auri write curve.json
 auri show curve.json
 
+# Fit an AutoEq-style measurement against a target curve
+auri autoeq fit measurement.csv target.csv --output curve.json
+
 # Write to the cable — only a curve the gate approves
 auri write curve.json --commit
 auri neutral --commit

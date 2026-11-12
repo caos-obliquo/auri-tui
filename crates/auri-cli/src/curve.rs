@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use auri_codec::{BAND_COUNT, Band, encode_reports};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A curve in memory: ten validated bands plus the preamp that precedes them.
 #[derive(Debug, Clone)]
@@ -16,7 +16,7 @@ pub struct CurveFile {
 
 /// `preampDb` / `freqHz` / `gainDb` / `qFactor` on disk, Rust snake_case in
 /// memory.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WireCurve {
     #[serde(default)]
@@ -77,5 +77,18 @@ impl CurveFile {
     /// Whatever the codec refuses.
     pub fn encode(&self) -> Result<Vec<[u8; auri_codec::REPORT_SIZE]>, String> {
         encode_reports(&self.eq_bands, self.preamp_db).map_err(|e| e.to_string())
+    }
+
+    /// Serializes this curve as `{"preampDb": .., "eqBands": [..]}`.
+    ///
+    /// # Errors
+    ///
+    /// JSON serialization failure.
+    pub fn to_json(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(&WireCurve {
+            preamp_db: self.preamp_db,
+            eq_bands: self.eq_bands.clone(),
+        })
+        .map_err(|error| format!("cannot serialize curve: {error}"))
     }
 }

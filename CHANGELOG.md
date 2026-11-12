@@ -6,6 +6,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `auri autoeq fit measurement.csv target.csv --output curve.json` fits an
+  AutoEq-style two-column frequency/dB measurement against a target curve,
+  emits an Auri-compatible ten-band curve file, and prints the fit quality.
+  The output still passes through the normal safety gate before it can be
+  written; the command never opens the cable.
+
 ## [1.0.0] - 2026-11-11
 
 ### Changed
